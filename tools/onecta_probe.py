@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Log in to the Daikin Onecta API once and test what a Loxone Virtual Output can send.
 
-Usage: python3 tools/onecta_probe.py
+Usage: python3 tools/onecta_probe.py [--login]   (--login: ignore saved tokens, e.g. other account)
 
 Run it yourself: it asks for your Daikin developer app's client id and secret and
 never prints tokens. It
@@ -22,6 +22,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -138,21 +139,32 @@ def load_or_refresh_tokens() -> dict | None:
 
 
 def find_target(devices: list) -> tuple[str, str, str] | None:
-    """Pick a settable onOffMode; re-sending its current value changes nothing."""
+    """Pick an onOffMode to re-send with its current value (changes nothing).
+
+    Prefers a settable one on an online gateway. Falls back to an offline/read-only
+    device: PATCH then returns a quick API error, and comparing PUT/POST against that
+    still shows whether those methods are routed at all.
+    """
+    candidates = []
     for gateway in devices:
+        online = gateway.get("isCloudConnectionUp", {}).get("value", True)
         for mp in gateway.get("managementPoints", []):
-            if mp.get("managementPointType") != "climateControl":
-                continue
             on_off = mp.get("onOffMode", {})
-            if on_off.get("settable"):
+            if mp.get("managementPointType") == "climateControl" and "value" in on_off:
                 name = mp.get("name", {}).get("value", mp["embeddedId"])
-                print(f"Test target: {name} ({gateway.get('deviceModel')}), onOffMode = {on_off['value']}")
-                return gateway["id"], mp["embeddedId"], on_off["value"]
-    return None
+                candidates.append((bool(on_off.get("settable")) and online, name, gateway, mp, on_off["value"]))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda c: not c[0])
+    usable, name, gateway, mp, value = candidates[0]
+    print(f"Test target: {name} ({gateway.get('deviceModel')}), onOffMode = {value}")
+    if not usable:
+        print("  Note: no online/settable device; expect PATCH to return an error too. Compare PUT/POST against it.")
+    return gateway["id"], mp["embeddedId"], value
 
 
 def main() -> None:
-    tokens = load_or_refresh_tokens() or login()
+    tokens = (None if "--login" in sys.argv else load_or_refresh_tokens()) or login()
     auth = {"Authorization": f"Bearer {tokens['access_token']}"}
 
     status, text = request("GET", f"{API_URL}/v1/gateway-devices", headers=auth)
