@@ -61,8 +61,23 @@ mechanism combines these:
 | PicoC streams | ❌ | ✅ | ✅ |
 | Virtual Output | ✅ | ✅ | ❌ |
 
-**Conclusion:** the Daikin cloud API can't be used from the Miniserver alone. Something
-outside Loxone has to handle at least the TLS, or the whole Daikin side.
+~~**Conclusion:** the Daikin cloud API can't be used from the Miniserver alone.~~
+
+**Correction:** Virtual Output commands have **"Save HTTP response"** (*HTTP antwoord
+opslaan*). The reply is written to `/user/common/<file>` on the Miniserver and can be read
+back by a Virtual HTTP Input (command recognition) or PicoC. So the combination
+**Virtual Output (HTTPS POST) + saved response + local read** covers the token refresh,
+*if* the remaining unknowns resolve:
+
+| # | Open question | How to test |
+|---|---|---|
+| 1 | Does `<v>` in a Virtual Output header/body accept **text** from a program block (tokens are text)? | [`loxone/picoc/vo_text_test.c`](../loxone/picoc/vo_text_test.c) against httpbin.org |
+| 2 | Commands need **PATCH**, but Virtual Outputs offer GET/POST/PUT/DELETE. Does the Onecta API accept PUT/POST on characteristics? | curl with a real Onecta access token |
+| 3 | A PATCH-like command needs the token in the header **and** the value in the body, but there is only one `<v>`. | depends on 1 and 2 |
+
+If 1 fails: Loxone can't send the tokens, so no Loxone-only integration is possible.
+If 1 works but 2 fails: Loxone-only **read** (temperatures, setpoints, status) works, but
+**control** doesn't.
 
 ## Original test plan
 
