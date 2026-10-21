@@ -5,61 +5,115 @@
 // because the Daikin API only accepts HTTPS.
 //
 // How to run:
-//   1. Loxone Config: add a "Program" block (Script), paste this code, save to the Miniserver.
-//   2. Watch outputs TQ1..TQ3 in Liveview and the log (Monitor / def.log).
-//   3. Report the TQ1/TQ2 lines back.
+//   1. Loxone Config: add a "Program" block, paste this code, save to the Miniserver.
+//   2. Watch Txt1..Txt3 in Liveview (and Etxt if a step fails).
+//   3. Report Txt1, Txt2, Txt3 and Etxt back.
 //
-// Each line is "<test>: OK" when an HTTP response came back, otherwise "FAIL".
+// Txt1 = httpget results, Txt2 = stream results, Txt3 = last step started.
 // The plain-HTTP tests are controls: if they fail, the test itself is broken
-// (DNS/internet), not HTTPS.
+// (DNS/internet), not HTTPS. Written without user functions or ?: on purpose:
+// the Loxone PicoC interpreter rejects some standard constructs.
 
 char response[513];
-char summary[400];
-char line[100];
+char res1[300];
+char res2[300];
+char *r;
+STREAM *s;
+int n;
 
-int looks_like_http(char *text)
-{
-	if (text == NULL) return 0;
-	return strncmp(text, "HTTP/1.", 7) == 0 || strstr(text, "<html") != NULL || strstr(text, "<!doctype") != NULL;
+res1[0] = 0;
+res2[0] = 0;
+
+// 1. httpget over plain HTTP (control)
+setoutputtext(2, "step 1 httpget http");
+r = httpget("example.com", "/");
+if (r != 0) {
+	strcat(res1, "http:OK ");
+	free(r);
+} else {
+	strcat(res1, "http:FAIL ");
 }
+setoutputtext(0, res1);
 
-void test_httpget(char *label, char *address)
-{
-	char *result = httpget(address, "/");
-	sprintf(line, "%s: %s; ", label, looks_like_http(result) ? "OK" : "FAIL");
-	printf("httpget %s -> %s", address, looks_like_http(result) ? "OK" : "FAIL");
-	strcat(summary, line);
-	if (result != NULL) free(result);
+// 2. httpget over HTTPS
+setoutputtext(2, "step 2 httpget https");
+r = httpget("https://example.com", "/");
+if (r != 0) {
+	strcat(res1, "https:OK ");
+	free(r);
+} else {
+	strcat(res1, "https:FAIL ");
 }
+setoutputtext(0, res1);
 
-void test_stream(char *label, char *path)
-{
-	STREAM *stream = stream_create(path, 0, 0);
-	int n = 0;
-	response[0] = 0;
-	if (stream != NULL) {
-		stream_printf(stream, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n");
-		stream_flush(stream);
-		n = stream_read(stream, response, 512, 5000);
-		if (n > 0) response[n] = 0;
-		stream_close(stream);
-	}
-	sprintf(line, "%s: %s; ", label, (n > 0 && looks_like_http(response)) ? "OK" : (stream == NULL ? "NO-STREAM" : "FAIL"));
-	printf("stream %s -> created=%d bytes=%d", path, stream != NULL, n);
-	strcat(summary, line);
+// 3. TCP stream on port 80 (control)
+setoutputtext(2, "step 3 stream tcp80");
+n = 0;
+response[0] = 0;
+s = stream_create("/dev/tcp/example.com/80", 0, 0);
+if (s != 0) {
+	stream_printf(s, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n");
+	stream_flush(s);
+	n = stream_read(s, response, 512, 5000);
+	stream_close(s);
 }
+if (n > 7 && strncmp(response, "HTTP/1.", 7) == 0) {
+	strcat(res2, "tcp80:OK ");
+} else {
+	strcat(res2, "tcp80:FAIL ");
+}
+setoutputtext(1, res2);
 
-summary[0] = 0;
-test_httpget("httpget-http(control)", "example.com");
-test_httpget("httpget-https", "https://example.com");
-setoutputtext(0, summary);
+// 4. TLS stream candidates on port 443 (undocumented device paths)
+setoutputtext(2, "step 4 stream tls");
+n = 0;
+response[0] = 0;
+s = stream_create("/dev/tls/example.com/443", 0, 0);
+if (s != 0) {
+	stream_printf(s, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n");
+	stream_flush(s);
+	n = stream_read(s, response, 512, 5000);
+	stream_close(s);
+}
+if (n > 7 && strncmp(response, "HTTP/1.", 7) == 0) {
+	strcat(res2, "tls:OK ");
+} else {
+	strcat(res2, "tls:FAIL ");
+}
+setoutputtext(1, res2);
 
-summary[0] = 0;
-test_stream("tcp80(control)", "/dev/tcp/example.com/80");
-test_stream("tls", "/dev/tls/example.com/443");
-test_stream("ssl", "/dev/ssl/example.com/443");
-test_stream("tcps", "/dev/tcps/example.com/443");
-setoutputtext(1, summary);
+setoutputtext(2, "step 5 stream ssl");
+n = 0;
+response[0] = 0;
+s = stream_create("/dev/ssl/example.com/443", 0, 0);
+if (s != 0) {
+	stream_printf(s, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n");
+	stream_flush(s);
+	n = stream_read(s, response, 512, 5000);
+	stream_close(s);
+}
+if (n > 7 && strncmp(response, "HTTP/1.", 7) == 0) {
+	strcat(res2, "ssl:OK ");
+} else {
+	strcat(res2, "ssl:FAIL ");
+}
+setoutputtext(1, res2);
+
+setoutputtext(2, "step 6 stream tcps");
+n = 0;
+response[0] = 0;
+s = stream_create("/dev/tcps/example.com/443", 0, 0);
+if (s != 0) {
+	stream_printf(s, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n");
+	stream_flush(s);
+	n = stream_read(s, response, 512, 5000);
+	stream_close(s);
+}
+if (n > 7 && strncmp(response, "HTTP/1.", 7) == 0) {
+	strcat(res2, "tcps:OK ");
+} else {
+	strcat(res2, "tcps:FAIL ");
+}
+setoutputtext(1, res2);
 
 setoutputtext(2, "done");
-printf("HTTPS capability test done");
