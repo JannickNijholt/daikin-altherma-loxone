@@ -107,9 +107,10 @@ Exit criteria: both units confirmed compatible, so we go for Option A. Otherwise
 ### Phase 3: Loxone Config – Modbus devices
 
 1. Per HomeHub: add a **Modbus Server** (Modbus TCP, IP, port 502, unit id).
-2. Start from the Loxone Library template **"Daikin Heating & Cooling"** (EKRHH, use case 3).
-   Compare it against the register map and extend it where needed. Keep our own exported
-   template in `loxone/templates/` (versioned in this repo).
+2. ✅ Import our template
+   [`loxone/templates/MB_Daikin_HomeHub_EKRHH.xml`](../loxone/templates/MB_Daikin_HomeHub_EKRHH.xml).
+   It's generated from Daikin's register map and fixes several issues in the Loxone Library
+   "Daikin Heating & Cooling" template. See [loxone-setup.md](loxone-setup.md).
 3. Sensors (FC 4, signed 16-bit, ÷100 for Temp16/Pow16): leaving/return water, DHW,
    outdoor, room temperature, power, flow, compressor/pump/defrost/3-way valve,
    error state, code and sub-code.

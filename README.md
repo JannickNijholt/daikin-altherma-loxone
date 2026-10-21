@@ -15,6 +15,13 @@ setup.
 
 Full plan, options and open questions: **[docs/PLAN.md](docs/PLAN.md)**
 
+## Loxone template
+
+**[`loxone/templates/MB_Daikin_HomeHub_EKRHH.xml`](loxone/templates/MB_Daikin_HomeHub_EKRHH.xml)**
+is a Modbus TCP device template for the Daikin HomeHub (use case 3). It covers all input
+and holding registers, with scaling applied. Import and wiring instructions are in
+**[docs/loxone-setup.md](docs/loxone-setup.md)**.
+
 ## Repository layout
 
 | Path | Contents |
@@ -23,12 +30,14 @@ Full plan, options and open questions: **[docs/PLAN.md](docs/PLAN.md)**
 | `docs/findings/` | Dated test results from the real installation |
 | `docs/reference/` | Register maps and protocol notes |
 | `tools/` | Read-only diagnostic scripts |
-| `loxone/templates/` | Loxone Config Modbus templates (Phase 3) |
+| `loxone/templates/` | Loxone Config Modbus templates (generated) |
 
 ## Tools
 
 ```bash
+python3 tools/build_loxone_template.py          # regenerate the Loxone template
+python3 tools/build_loxone_template.py --check  # validate it is correct and up to date
 python3 tools/probe_brp069a78.py 192.168.10.7 192.168.10.3
 ```
 
-This probes the WLAN cartridges for local APIs. It is read-only and redacts identifiers.
+The probe checks the WLAN cartridges for local APIs. It is read-only and redacts identifiers.
