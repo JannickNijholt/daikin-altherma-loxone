@@ -90,13 +90,14 @@ back by a Virtual HTTP Input (command recognition) or PicoC. So the combination
 | Save path for *HTTP antwoord opslaan* | ✅ `/user/common/<name>` | read back via `/dev/fsget/user/common/<name>` |
 | PicoC `fopen`/`fread` of the saved response | ✅ | `/user/common/votest.txt bytes=495` |
 | PicoC `fopen("w")`/`fprintf` + read back | ✅ | `write+read: token-backup-test`, so tokens can be persisted |
+| One `<v>` carrying headers + blank line + JSON body (header field `<v>`, body empty, PUT) | ✅ | `"Authorization": "Bearer TESTTOKEN-2"`, `"json": {"n": 2, "value": 21.5}`, exact `Content-Length` |
+| `Content-Type` inside that `<v>` | ⚠️ dropped | not received; check whether Onecta requires it ([`tools/onecta_probe.py`](../tools/onecta_probe.py)) |
 
 So question 1 is answered: **yes**, and the Daikin token refresh is possible with a
 Virtual Output. Still open:
 
-- One `<v>` for both header and body, needed for commands
-  ([`vo_header_body_test.c`](../loxone/picoc/vo_header_body_test.c)).
-- Question 2 (PATCH vs PUT/POST on the Onecta API), which needs a real token.
+- Question 2: does the Onecta API accept PUT/POST (Loxone has no PATCH), and does it need
+  `Content-Type`? Run [`tools/onecta_probe.py`](../tools/onecta_probe.py) with a real login.
 
 If 1 fails: Loxone can't send the tokens, so no Loxone-only integration is possible.
 If 1 works but 2 fails: Loxone-only **read** (temperatures, setpoints, status) works, but
