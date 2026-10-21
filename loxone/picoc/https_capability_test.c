@@ -105,8 +105,8 @@ if (n > 7 && strncmp(response, "HTTP/1.", 7) == 0) {
 }
 setoutputtext(1, res2);
 
-// 7. httpget over HTTPS (last: it hung on the first run, so it must not block the stream tests)
-setoutputtext(2, "step 7 httpget https (may hang)");
+// 6. httpget over HTTPS (last: it hung on the first run, so it must not block the stream tests)
+setoutputtext(2, "step 6 httpget https (may hang)");
 r = httpget("https://example.com", "/");
 if (r != 0) {
 	strcat(res1, "https:OK ");
