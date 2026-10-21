@@ -5,7 +5,7 @@ Usage: python3 tools/onecta_probe.py
 
 Run it yourself: it asks for your Daikin developer app's client id and secret and
 never prints tokens. It
-  1. opens the Daikin login; after logging in, you paste the URL from the browser's
+  1. reuses saved tokens (refreshing them when expired) or opens the Daikin login; after logging in, you paste the URL from the browser's
      address bar (it contains the code) and it exchanges the code for tokens;
   2. reads /v1/gateway-devices and prints the climate-control setpoints it finds;
   3. re-sends the CURRENT room setpoint (so nothing changes) with PUT, POST and
@@ -42,13 +42,17 @@ TOKENS_FILE = ROOT / "onecta_tokens.local.json"
 DEVICES_FILE = ROOT / "onecta_devices.raw.json"
 
 
-def request(method: str, url: str, *, headers: dict | None = None, body: bytes | None = None) -> tuple[int, str]:
+def request(method: str, url: str, *, headers: dict | None = None, body: bytes | None = None,
+            timeout: int = 30) -> tuple[int, str]:
+    """Return (status, body); status 0 means no response within the timeout."""
     req = urllib.request.Request(url, data=body, method=method, headers=headers or {})
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, resp.read().decode(errors="replace")
     except urllib.error.HTTPError as err:
         return err.code, err.read().decode(errors="replace")
+    except (TimeoutError, OSError) as err:
+        return 0, f"no response ({err})"
 
 
 def read_code(state: str) -> str:
@@ -102,26 +106,53 @@ def login() -> dict:
     return tokens
 
 
-def find_setpoint(devices: list) -> tuple[str, str, str, float] | None:
+def save_tokens(tokens: dict) -> None:
+    TOKENS_FILE.write_text(json.dumps(tokens, indent=2))
+    TOKENS_FILE.chmod(0o600)
+
+
+def load_or_refresh_tokens() -> dict | None:
+    """Reuse saved tokens; refresh them when the access token is (nearly) expired."""
+    if not TOKENS_FILE.exists():
+        return None
+    tokens = json.loads(TOKENS_FILE.read_text())
+    if time.time() < tokens["obtained_at"] + tokens.get("expires_in", 3600) - 120:
+        print(f"Using saved tokens from {TOKENS_FILE.name}\n")
+        return tokens
+    status, text = request("POST", TOKEN_URL, headers={"Content-Type": "application/x-www-form-urlencoded"},
+                           body=urllib.parse.urlencode({
+                               "grant_type": "refresh_token",
+                               "refresh_token": tokens["refresh_token"],
+                               "client_id": tokens["client_id"],
+                               "client_secret": tokens["client_secret"],
+                           }).encode())
+    if status != 200:
+        print(f"Refreshing saved tokens failed (HTTP {status}); logging in again.\n")
+        return None
+    fresh = json.loads(text)
+    fresh.update(client_id=tokens["client_id"], client_secret=tokens["client_secret"], obtained_at=int(time.time()))
+    save_tokens(fresh)
+    new_refresh = fresh.get("refresh_token") != tokens["refresh_token"]
+    print(f"Refreshed saved tokens (new refresh token issued: {new_refresh})\n")
+    return fresh
+
+
+def find_target(devices: list) -> tuple[str, str, str] | None:
+    """Pick a settable onOffMode; re-sending its current value changes nothing."""
     for gateway in devices:
         for mp in gateway.get("managementPoints", []):
             if mp.get("managementPointType") != "climateControl":
                 continue
-            name = mp.get("name", {}).get("value", mp["embeddedId"])
-            modes = mp.get("temperatureControl", {}).get("value", {}).get("operationModes", {})
-            mode = mp.get("operationMode", {}).get("value", "heating")
-            setpoints = modes.get(mode, {}).get("setpoints", {})
-            print(f"{name}: gateway {gateway['id']}, management point {mp['embeddedId']}, mode {mode}")
-            for key, sp in setpoints.items():
-                print(f"    {key} = {sp.get('value')} (min {sp.get('minValue')}, max {sp.get('maxValue')}, step {sp.get('stepValue')})")
-            for key in ("roomTemperature", "leavingWaterOffset"):
-                if key in setpoints:
-                    return gateway["id"], mp["embeddedId"], f"/operationModes/{mode}/setpoints/{key}", setpoints[key]["value"]
+            on_off = mp.get("onOffMode", {})
+            if on_off.get("settable"):
+                name = mp.get("name", {}).get("value", mp["embeddedId"])
+                print(f"Test target: {name} ({gateway.get('deviceModel')}), onOffMode = {on_off['value']}")
+                return gateway["id"], mp["embeddedId"], on_off["value"]
     return None
 
 
 def main() -> None:
-    tokens = login()
+    tokens = load_or_refresh_tokens() or login()
     auth = {"Authorization": f"Bearer {tokens['access_token']}"}
 
     status, text = request("GET", f"{API_URL}/v1/gateway-devices", headers=auth)
@@ -131,24 +162,26 @@ def main() -> None:
     devices = json.loads(text)
     print(f"Read {len(devices)} gateway device(s), {len(text)} bytes. Saved to {DEVICES_FILE.name}\n")
 
-    target = find_setpoint(devices)
+    target = find_target(devices)
     if target is None:
-        raise SystemExit("No climate-control setpoint found to test with.")
-    gateway_id, mp_id, path, value = target
-    url = f"{API_URL}/v1/gateway-devices/{gateway_id}/management-points/{mp_id}/characteristics/temperatureControl"
-    body = json.dumps({"value": value, "path": path}).encode()
-    print(f"\nRe-sending the current value {value} for {path} (no actual change):")
+        raise SystemExit("No settable onOffMode found to test with.")
+    gateway_id, mp_id, value = target
+    url = f"{API_URL}/v1/gateway-devices/{gateway_id}/management-points/{mp_id}/characteristics/onOffMode"
+    body = json.dumps({"value": value}).encode()
+    print(f"Re-sending the current value {value!r} (no actual change):")
 
+    # PATCH first as the control: it is the documented method and must return 204.
     tests = [
-        ("PUT", True), ("POST", True), ("PUT", False), ("POST", False), ("PATCH", False), ("PATCH", True),
+        ("PATCH", True), ("PATCH", False), ("PUT", True), ("POST", True), ("PUT", False), ("POST", False),
     ]
     for method, with_type in tests:
         headers = dict(auth)
         if with_type:
             headers["Content-Type"] = "application/json"
-        status, text = request(method, url, headers=headers, body=body)
+        status, text = request(method, url, headers=headers, body=body, timeout=15)
         label = "with" if with_type else "without"
-        print(f"  {method:5} {label:7} Content-Type -> HTTP {status} {text[:120].strip()}")
+        result = "no response (timeout)" if status == 0 else f"HTTP {status} {text[:120].strip()}"
+        print(f"  {method:5} {label:7} Content-Type -> {result}", flush=True)
         time.sleep(3)
 
     print("\nHTTP 204 = accepted. Send this whole output back.")
