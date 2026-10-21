@@ -20,6 +20,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import re
 import secrets
 import time
 import urllib.error
@@ -53,10 +54,15 @@ def request(method: str, url: str, *, headers: dict | None = None, body: bytes |
 def read_code(state: str) -> str:
     print("After logging in, the browser lands on an error or login page. That's expected.")
     redirected = input("Paste the full URL from the address bar: ").strip()
-    query = urllib.parse.parse_qs(urllib.parse.urlparse(redirected).query)
-    if query.get("state", [""])[0] != state or "code" not in query:
-        raise SystemExit(f"No valid code in that URL: {sorted(query)}")
-    return query["code"][0]
+    # The code can be nested, e.g. my.home-assistant.io wraps it as
+    # .../_change/?redirect=oauth%2F%3Fcode%3D...%26state%3D..., so decode repeatedly.
+    for _ in range(4):
+        redirected = urllib.parse.unquote(redirected)
+    code = re.search(r"[?&]code=([^&#\s]+)", redirected)
+    found_state = re.search(r"[?&]state=([^&#\s]+)", redirected)
+    if not code or not found_state or found_state.group(1) != state:
+        raise SystemExit("No code with the matching state in that URL; run the script again and paste the new URL.")
+    return code.group(1)
 
 
 def login() -> dict:
