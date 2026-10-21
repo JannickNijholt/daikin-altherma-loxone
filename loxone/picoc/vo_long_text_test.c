@@ -15,9 +15,14 @@
 // Check in the Loxone network monitor: Content-Length (~1560 expected), how many
 // Content-Type headers are sent, and whether the Authorization header is complete.
 
+// Note: Loxone PicoC rejects pointer arithmetic on arrays (text + 1500), so the
+// counter suffix is copied in character by character.
+
 char text[1600];
+char suffix[20];
 int i = 0;
 int k;
+int j;
 
 for (k = 0; k < 1500; k++) {
 	text[k] = 'A' + (k % 26);
@@ -25,7 +30,13 @@ for (k = 0; k < 1500; k++) {
 
 while (TRUE) {
 	i = i + 1;
-	sprintf(text + 1500, "-%d", i);
+	sprintf(suffix, "-%d", i);
+	j = 0;
+	while (suffix[j] != 0) {
+		text[1500 + j] = suffix[j];
+		j = j + 1;
+	}
+	text[1500 + j] = 0;
 	setoutputtext(0, text);
 	sleep(20000);
 }
