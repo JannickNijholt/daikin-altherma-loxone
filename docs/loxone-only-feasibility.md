@@ -87,12 +87,13 @@ back by a Virtual HTTP Input (command recognition) or PicoC. So the combination
 | Content-Type override via header field (`Content-Type: …\r\nAuthorization: Bearer <v>`) | ✅ | single `Content-Type: application/x-www-form-urlencoded; charset=utf-8`, body parsed as form |
 | Token-length text (1502 chars) in header **and** body | ✅ | `Content-Length: 1541` = 39 + 1502, nothing truncated |
 | PicoC rejects pointer arithmetic (`text + 1500`) | ⚠️ | "invalid operation"; copy characters instead |
+| Save path for *HTTP antwoord opslaan* | ✅ `/user/common/<name>` | read back via `/dev/fsget/user/common/<name>` |
+| PicoC `fopen`/`fread` of the saved response | ✅ | `/user/common/votest.txt bytes=495` |
+| PicoC `fopen("w")`/`fprintf` + read back | ✅ | `write+read: token-backup-test`, so tokens can be persisted |
 
 So question 1 is answered: **yes**, and the Daikin token refresh is possible with a
 Virtual Output. Still open:
 
-- Reading the saved file from PicoC, and writing a token backup
-  ([`fs_read_test.c`](../loxone/picoc/fs_read_test.c)).
 - One `<v>` for both header and body, needed for commands
   ([`vo_header_body_test.c`](../loxone/picoc/vo_header_body_test.c)).
 - Question 2 (PATCH vs PUT/POST on the Onecta API), which needs a real token.
