@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VirtualOut Title="PATCH method test (httpbin)" Comment="Does the Miniserver send PATCH when a template sets CmdOnMethod=PATCH? httpbin.org/patch only accepts PATCH." HintText="Connect the command to a changing analog value (e.g. O1 of loxone/picoc/vo_text_test.c). Result: /dev/fsget/user/common/patchtest.txt" Address="https://httpbin.org" CmdInit="" CloseAfterSend="true" CmdSep="">
+	<Info templateType="3" minVersion="15000227"/>
+	<VirtualOutCmd Title="PATCH test" Comment="Echo JSON in patchtest.txt = PATCH sent; 405 = Loxone changed the method" CmdOnMethod="PATCH" CmdOffMethod="GET" CmdOn="/patch" CmdOnHTTP="Content-Type: application/json" CmdOnPost="{&quot;value&quot;: &lt;v&gt;}" CmdOff="" CmdOffHTTP="" CmdOffPost="" CmdAnswer="/user/common/patchtest.txt" Analog="true" Repeat="0" RepeatRate="0"/>
+</VirtualOut>

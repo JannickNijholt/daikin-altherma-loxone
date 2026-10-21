@@ -149,3 +149,24 @@ Consequences for a Loxone-only setup:
   On these Altherma 3 M units, schedule actions support `roomTemperature` (12–30 °C,
   whole degrees). A schedule with one constant action can therefore set the room setpoint
   from Loxone. The leaving-water offset and on/off have no schedule action.
+
+### PATCH from Loxone: research (2026-10-21)
+
+- **Loxone Config 17.1 UI:** the Virtual Output command method dropdown offers GET, POST,
+  PUT, DELETE (screenshot from this installation). There's no PATCH in the publicly
+  reachable changelog entries or docs. Loxone's site was down during this research.
+- **Others hit the same wall:** a loxforum user with a PATCH-only API (VSSL amplifier)
+  found the same four methods and had no Loxone-native solution
+  ([thread](https://www.loxforum.com/forum/german/software-konfiguration-programm-und-visualisierung/398576-http-virtual-outputs)).
+  The documented workarounds all use a relay outside Loxone: a NAS web server
+  ([thread](https://www.loxforum.com/forum/software-configuration-user-interface/356585-virtual-output-with-https)),
+  Node-RED or LoxBerry
+  ([thread](https://www.loxforum.com/forum/german/software-konfiguration-programm-und-visualisierung/401059-virtual-output-to-retrieve-data)).
+- **Raw TLS output:** Virtual Outputs support `tcp`, `udp`, `http(s)` and `wol` only
+  ([Loxone docs](https://www.loxone.com/enen/kb/virtual-inputs-outputs/)), so there's no
+  way to write a raw HTTPS request.
+- **Templates:** in Virtual Output templates the method is a free-text attribute
+  (`CmdOnMethod`). None of the 1600+ Loxone Library commands use PATCH. Untested whether
+  the Miniserver honours it. Test:
+  [`loxone/templates/VO_PATCH_method_test.xml`](../loxone/templates/VO_PATCH_method_test.xml)
+  against `httpbin.org/patch`, which returns 200 only for PATCH and 405 otherwise.
