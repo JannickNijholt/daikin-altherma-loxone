@@ -5,8 +5,8 @@ Usage: python3 tools/onecta_probe.py
 
 Run it yourself: it asks for your Daikin developer app's client id and secret and
 never prints tokens. It
-  1. opens the Daikin login, catches the redirect on http://localhost:8765/callback
-     (or lets you paste the redirected URL), and exchanges the code for tokens;
+  1. opens the Daikin login; after logging in, you paste the URL from the browser's
+     address bar (it contains the code) and it exchanges the code for tokens;
   2. reads /v1/gateway-devices and prints the climate-control setpoints it finds;
   3. re-sends the CURRENT room setpoint (so nothing changes) with PUT, POST and
      PATCH, with and without Content-Type, and prints Daikin's status codes.
@@ -19,20 +19,22 @@ from __future__ import annotations
 
 import getpass
 import json
+import os
 import secrets
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 AUTHORIZE_URL = "https://idp.onecta.daikineurope.com/v1/oidc/authorize"
 TOKEN_URL = "https://idp.onecta.daikineurope.com/v1/oidc/token"
 API_URL = "https://api.onecta.daikineurope.com"
 SCOPE = "openid onecta:basic.integration offline_access"
-REDIRECT_URI = "http://localhost:8765/callback"
+# Daikin's CloudFront WAF blocks localhost/127.0.0.1 redirect URIs (HTTP 403), so use a
+# LAN address. The page doesn't need to exist: the code is read from the address bar.
+REDIRECT_URI = os.environ.get("ONECTA_REDIRECT_URI", "http://192.168.10.10/daikin-callback")
 
 ROOT = Path(__file__).resolve().parent.parent
 TOKENS_FILE = ROOT / "onecta_tokens.local.json"
@@ -48,27 +50,13 @@ def request(method: str, url: str, *, headers: dict | None = None, body: bytes |
         return err.code, err.read().decode(errors="replace")
 
 
-def catch_code(state: str) -> str:
-    result: dict[str, str] = {}
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            result.update({k: v[0] for k, v in query.items()})
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"Daikin login received, you can close this tab.")
-
-        def log_message(self, *args) -> None:
-            pass
-
-    server = HTTPServer(("127.0.0.1", 8765), Handler)
-    server.timeout = 300
-    server.handle_request()
-    if result.get("state") != state or "code" not in result:
-        raise SystemExit(f"Login failed or cancelled: {result}")
-    return result["code"]
+def read_code(state: str) -> str:
+    print("After logging in, the browser lands on an error or login page. That's expected.")
+    redirected = input("Paste the full URL from the address bar: ").strip()
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(redirected).query)
+    if query.get("state", [""])[0] != state or "code" not in query:
+        raise SystemExit(f"No valid code in that URL: {sorted(query)}")
+    return query["code"][0]
 
 
 def login() -> dict:
@@ -86,7 +74,7 @@ def login() -> dict:
     })
     print("\nOpening the Daikin login in your browser. If it doesn't open, visit:\n" + url + "\n")
     webbrowser.open(url)
-    code = catch_code(state)
+    code = read_code(state)
     status, text = request("POST", TOKEN_URL, headers={"Content-Type": "application/x-www-form-urlencoded"},
                            body=urllib.parse.urlencode({
                                "grant_type": "authorization_code",

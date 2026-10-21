@@ -119,3 +119,12 @@ TQ1/TQ2.
      ready ([loxone-setup.md](loxone-setup.md)).
   2. **A small always-on helper** (Docker container or LoxBerry plugin) that only does the
      Daikin login. It replaces Home Assistant but isn't Loxone-only.
+
+### Daikin login: redirect URI
+
+Daikin's CloudFront firewall rejects the authorize request with **HTTP 403** when the
+`redirect_uri` is `http://localhost…` or `http://127.0.0.1…`. LAN addresses
+(`http://192.168.10.10/…`) and HTTPS URLs pass through to the Daikin login. The redirect
+target doesn't need to exist: the authorization code is read from the browser's address
+bar. This project uses `http://192.168.10.10/daikin-callback`, so the code never leaves
+the LAN.
