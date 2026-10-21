@@ -35,19 +35,8 @@ if (r != 0) {
 }
 setoutputtext(0, res1);
 
-// 2. httpget over HTTPS
-setoutputtext(2, "step 2 httpget https");
-r = httpget("https://example.com", "/");
-if (r != 0) {
-	strcat(res1, "https:OK ");
-	free(r);
-} else {
-	strcat(res1, "https:FAIL ");
-}
-setoutputtext(0, res1);
-
-// 3. TCP stream on port 80 (control)
-setoutputtext(2, "step 3 stream tcp80");
+// 2. TCP stream on port 80 (control)
+setoutputtext(2, "step 2 stream tcp80");
 n = 0;
 response[0] = 0;
 s = stream_create("/dev/tcp/example.com/80", 0, 0);
@@ -64,8 +53,8 @@ if (n > 7 && strncmp(response, "HTTP/1.", 7) == 0) {
 }
 setoutputtext(1, res2);
 
-// 4. TLS stream candidates on port 443 (undocumented device paths)
-setoutputtext(2, "step 4 stream tls");
+// 3-5. TLS stream candidates on port 443 (undocumented device paths)
+setoutputtext(2, "step 3 stream tls");
 n = 0;
 response[0] = 0;
 s = stream_create("/dev/tls/example.com/443", 0, 0);
@@ -82,7 +71,7 @@ if (n > 7 && strncmp(response, "HTTP/1.", 7) == 0) {
 }
 setoutputtext(1, res2);
 
-setoutputtext(2, "step 5 stream ssl");
+setoutputtext(2, "step 4 stream ssl");
 n = 0;
 response[0] = 0;
 s = stream_create("/dev/ssl/example.com/443", 0, 0);
@@ -99,7 +88,7 @@ if (n > 7 && strncmp(response, "HTTP/1.", 7) == 0) {
 }
 setoutputtext(1, res2);
 
-setoutputtext(2, "step 6 stream tcps");
+setoutputtext(2, "step 5 stream tcps");
 n = 0;
 response[0] = 0;
 s = stream_create("/dev/tcps/example.com/443", 0, 0);
@@ -115,5 +104,16 @@ if (n > 7 && strncmp(response, "HTTP/1.", 7) == 0) {
 	strcat(res2, "tcps:FAIL ");
 }
 setoutputtext(1, res2);
+
+// 7. httpget over HTTPS (last: it hung on the first run, so it must not block the stream tests)
+setoutputtext(2, "step 7 httpget https (may hang)");
+r = httpget("https://example.com", "/");
+if (r != 0) {
+	strcat(res1, "https:OK ");
+	free(r);
+} else {
+	strcat(res1, "https:FAIL ");
+}
+setoutputtext(0, res1);
 
 setoutputtext(2, "done");
