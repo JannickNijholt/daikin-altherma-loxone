@@ -83,11 +83,19 @@ back by a Virtual HTTP Input (command recognition) or PicoC. So the combination
 | Text from a program block (Txt1) inserted via `<v>` in **header** | ✅ | `"X-Lox-Test": "abc123XYZ-1"` |
 | Same `<v>` text in **body** | ✅ | `"data": "token=abc123XYZ-1"` |
 | Save HTTP response to a file | ✅ | needs a **path** in *HTTP antwoord opslaan*; a bare filename wrote nothing |
-| Default Content-Type | ⚠️ `text/xml; charset=utf-8` | Daikin token endpoint needs `application/x-www-form-urlencoded`; override still to be tested |
+| Default Content-Type | `text/xml; charset=utf-8` | |
+| Content-Type override via header field (`Content-Type: …\r\nAuthorization: Bearer <v>`) | ✅ | single `Content-Type: application/x-www-form-urlencoded; charset=utf-8`, body parsed as form |
+| Token-length text (1502 chars) in header **and** body | ✅ | `Content-Length: 1541` = 39 + 1502, nothing truncated |
+| PicoC rejects pointer arithmetic (`text + 1500`) | ⚠️ | "invalid operation"; copy characters instead |
 
-So question 1 is answered: **yes**. Still open: Content-Type override, token-length text
-([`vo_long_text_test.c`](../loxone/picoc/vo_long_text_test.c)), reading the saved file
-from PicoC ([`fs_read_test.c`](../loxone/picoc/fs_read_test.c)), and question 2 (PATCH).
+So question 1 is answered: **yes**, and the Daikin token refresh is possible with a
+Virtual Output. Still open:
+
+- Reading the saved file from PicoC, and writing a token backup
+  ([`fs_read_test.c`](../loxone/picoc/fs_read_test.c)).
+- One `<v>` for both header and body, needed for commands
+  ([`vo_header_body_test.c`](../loxone/picoc/vo_header_body_test.c)).
+- Question 2 (PATCH vs PUT/POST on the Onecta API), which needs a real token.
 
 If 1 fails: Loxone can't send the tokens, so no Loxone-only integration is possible.
 If 1 works but 2 fails: Loxone-only **read** (temperatures, setpoints, status) works, but
