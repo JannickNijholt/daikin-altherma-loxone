@@ -34,7 +34,37 @@ Text Inputs can hold values. The blocker is **HTTPS from a program block**:
 - No public documentation or forum post confirms HTTPS support in PicoC. Loxone's own
   documentation site is offline at the time of writing, so this couldn't be checked there.
 
-## How to settle it: a 2-minute test on your Miniserver
+## Result (2026-10-21): not possible with Loxone alone
+
+Test run on the Miniserver with
+[`loxone/picoc/https_capability_test.c`](../loxone/picoc/https_capability_test.c):
+
+| Test | Result |
+|---|---|
+| `httpget` plain HTTP (control) | OK |
+| `httpget("https://…")` | OK (slow). It's GET only either way |
+| Stream `/dev/tcp/…/80` (control) | OK |
+| Stream `/dev/tls`, `/dev/ssl`, `/dev/tcps` on 443 | FAIL: no TLS for raw streams |
+
+Checked against Daikin the same day:
+
+- The token endpoint only accepts **POST**. A plain GET gets no response. A GET with a body
+  or with `X-HTTP-Method-Override` / `X-Method-Override` / `X-HTTP-Method: POST` is
+  rejected by CloudFront with `403`.
+
+The hourly token refresh needs an **HTTPS POST whose response is read**. No Loxone
+mechanism combines these:
+
+| Mechanism | HTTPS | POST | Reads response |
+|---|---|---|---|
+| PicoC `httpget` | ✅ | ❌ | ✅ |
+| PicoC streams | ❌ | ✅ | ✅ |
+| Virtual Output | ✅ | ✅ | ❌ |
+
+**Conclusion:** the Daikin cloud API can't be used from the Miniserver alone. Something
+outside Loxone has to handle at least the TLS, or the whole Daikin side.
+
+## Original test plan
 
 [`loxone/picoc/https_capability_test.c`](../loxone/picoc/https_capability_test.c) tests
 `httpget` and stream connections over HTTP (controls) and HTTPS, and writes the result to
