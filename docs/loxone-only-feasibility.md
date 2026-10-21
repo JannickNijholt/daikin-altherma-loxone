@@ -128,3 +128,24 @@ Daikin's CloudFront firewall rejects the authorize request with **HTTP 403** whe
 target doesn't need to exist: the authorization code is read from the browser's address
 bar. This project uses `http://192.168.10.10/daikin-callback`, so the code never leaves
 the LAN.
+
+### Onecta API: which methods work (tested 2026-10-21 on "Klimaatregeling boven")
+
+| Request | Result |
+|---|---|
+| `PATCH …/characteristics/onOffMode` + `Content-Type: application/json` | **204** |
+| Same without `Content-Type` | **422 INVALID_REQUEST**: Content-Type is required |
+| `PUT` / `POST` on characteristics (with or without Content-Type) | **no response (timeout)**: not supported |
+
+Consequences for a Loxone-only setup:
+
+- **Reading** (GET + Bearer) and the **token refresh** (POST to the IdP) work with
+  Virtual Outputs.
+- **Characteristics** (room setpoint, leaving-water offset, on/off, mode) only accept
+  PATCH, which Virtual Outputs can't send.
+- **Schedules** have their own **PUT** endpoints (`schedule/{mode}/current`,
+  `schedule/{mode}/schedules`, see
+  [daikin-controller-cloud#108](https://github.com/Apollon77/daikin-controller-cloud/issues/108)).
+  On these Altherma 3 M units, schedule actions support `roomTemperature` (12–30 °C,
+  whole degrees). A schedule with one constant action can therefore set the room setpoint
+  from Loxone. The leaving-water offset and on/off have no schedule action.

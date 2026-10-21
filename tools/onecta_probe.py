@@ -196,7 +196,55 @@ def main() -> None:
         print(f"  {method:5} {label:7} Content-Type -> {result}", flush=True)
         time.sleep(3)
 
+    # POST with a method-override header: would let a Loxone Virtual Output reach PATCH.
+    print("\nPOST with method-override headers (same no-op onOffMode body):")
+    for header in ("X-HTTP-Method-Override", "X-Method-Override", "X-HTTP-Method"):
+        headers = dict(auth, **{"Content-Type": "application/json", header: "PATCH"})
+        status, text = request("POST", url, headers=headers, body=body, timeout=15)
+        result = "no response (timeout)" if status == 0 else f"HTTP {status} {text[:120].strip()}"
+        print(f"  POST + {header}: PATCH -> {result}", flush=True)
+        time.sleep(3)
+
+    probe_schedules(devices, auth)
     print("\nHTTP 204 = accepted. Send this whole output back.")
+
+
+def probe_schedules(devices: list, auth: dict) -> None:
+    """PUT the CURRENT schedule selection and schedule set back unchanged.
+
+    These endpoints use PUT (which a Loxone Virtual Output can send), unlike
+    characteristics, which only accept PATCH.
+    """
+    for gateway in devices:
+        if not gateway.get("isCloudConnectionUp", {}).get("value", True):
+            continue
+        for mp in gateway.get("managementPoints", []):
+            schedule = mp.get("schedule", {}).get("value", {})
+            mode = schedule.get("currentMode", {}).get("value")
+            mode_data = schedule.get("modes", {}).get(mode)
+            if not mode_data:
+                continue
+            name = mp.get("name", {}).get("value", mp["embeddedId"])
+            base = f"{API_URL}/v1/gateway-devices/{gateway['id']}/management-points/{mp['embeddedId']}/schedule/{mode}"
+            print(f"\nSchedules on {name} (mode {mode}), re-sent unchanged:")
+
+            current = {"scheduleId": mode_data["currentSchedule"]["value"], "enabled": mode_data["enabled"]["value"]}
+            for with_type in (True, False):
+                headers = dict(auth, **({"Content-Type": "application/json"} if with_type else {}))
+                status, text = request("PUT", f"{base}/current", headers=headers,
+                                       body=json.dumps(current).encode(), timeout=15)
+                label = "with" if with_type else "without"
+                result = "no response (timeout)" if status == 0 else f"HTTP {status} {text[:120].strip()}"
+                print(f"  PUT schedule/{mode}/current {current} {label} Content-Type -> {result}", flush=True)
+                time.sleep(3)
+
+            schedules = {sid: {"actions": s.get("actions", {})} for sid, s in mode_data.get("schedules", {}).items()}
+            headers = dict(auth, **{"Content-Type": "application/json"})
+            status, text = request("PUT", f"{base}/schedules", headers=headers,
+                                   body=json.dumps(schedules).encode(), timeout=15)
+            result = "no response (timeout)" if status == 0 else f"HTTP {status} {text[:160].strip()}"
+            print(f"  PUT schedule/{mode}/schedules (all {len(schedules)} unchanged) -> {result}", flush=True)
+            return
 
 
 if __name__ == "__main__":
