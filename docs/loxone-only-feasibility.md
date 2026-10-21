@@ -75,6 +75,20 @@ back by a Virtual HTTP Input (command recognition) or PicoC. So the combination
 | 2 | Commands need **PATCH**, but Virtual Outputs offer GET/POST/PUT/DELETE. Does the Onecta API accept PUT/POST on characteristics? | curl with a real Onecta access token |
 | 3 | A PATCH-like command needs the token in the header **and** the value in the body, but there is only one `<v>`. | depends on 1 and 2 |
 
+### Confirmed on the Miniserver (2026-10-21, firmware 17.1.6.30)
+
+| Capability | Result | Evidence |
+|---|---|---|
+| Virtual Output HTTPS POST | ✅ | httpbin echo `"url": "https://httpbin.org/post"` |
+| Text from a program block (Txt1) inserted via `<v>` in **header** | ✅ | `"X-Lox-Test": "abc123XYZ-1"` |
+| Same `<v>` text in **body** | ✅ | `"data": "token=abc123XYZ-1"` |
+| Save HTTP response to a file | ✅ | needs a **path** in *HTTP antwoord opslaan*; a bare filename wrote nothing |
+| Default Content-Type | ⚠️ `text/xml; charset=utf-8` | Daikin token endpoint needs `application/x-www-form-urlencoded`; override still to be tested |
+
+So question 1 is answered: **yes**. Still open: Content-Type override, token-length text
+([`vo_long_text_test.c`](../loxone/picoc/vo_long_text_test.c)), reading the saved file
+from PicoC ([`fs_read_test.c`](../loxone/picoc/fs_read_test.c)), and question 2 (PATCH).
+
 If 1 fails: Loxone can't send the tokens, so no Loxone-only integration is possible.
 If 1 works but 2 fails: Loxone-only **read** (temperatures, setpoints, status) works, but
 **control** doesn't.
