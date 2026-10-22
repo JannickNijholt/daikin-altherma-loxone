@@ -170,7 +170,10 @@ class WebUI:
         redirect = s.get("redirect_uri") or suggested
         warn = ("<p class=bad>Daikin's firewall blocks <code>localhost</code>/<code>127.0.0.1</code> redirect URIs. "
                 "Open this page via the bridge's LAN IP address instead.</p>") if is_loopback(redirect) else ""
-        logout = ("<form method=post action=/logout class=inline><button class=secondary>Log out of Daikin</button></form>"
+        # A separate card: forms can't be nested, a logout button inside the settings form would submit it.
+        logout = ("<div class=card><h2>3. Daikin account</h2><p>Logged in. To switch to another Daikin account, log out "
+                  "and log in again (use a private browser window if Daikin remembers the old account).</p>"
+                  "<form method=post action=/logout><button class=secondary>Log out of Daikin</button></form></div>"
                   if self.onecta.logged_in else "")
         return page("Setup", f"""<div class=card><h2>1. Daikin developer app</h2>
           <p>Create an app at <a href='https://developer.cloud.daikineurope.com' target=_blank>developer.cloud.daikineurope.com</a>
@@ -183,7 +186,7 @@ class WebUI:
           <label>Client secret</label><input type=password name=client_secret
             placeholder='{'stored, leave empty to keep' if s.get('client_secret') else ''}' {'required' if not s.get('client_secret') else ''}>
           <label>Redirect URI (exactly as in the Daikin app)</label><input type=text name=redirect_uri value='{escape(redirect)}' required>
-          <div class=row><button>Save</button> {logout}</div></form></div>""")
+          <div class=row><button>Save</button></div></form></div>{logout}""")
 
     async def save_setup(self, request: web.Request) -> web.Response:
         form = await request.post()
@@ -215,7 +218,8 @@ class WebUI:
 
     async def logout(self, request: web.Request) -> web.Response:
         self.onecta.logout()
-        self.bridge.log("Logged out of Daikin")
+        self.bridge.reset()
+        self.bridge.log("Logged out of Daikin; units and unit IDs cleared")
         self.bridge.wake()
         raise web.HTTPSeeOther("/")
 

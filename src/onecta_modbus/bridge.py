@@ -60,6 +60,18 @@ class Bridge:
         self._last_written.clear()
         self.log("Unit IDs changed: " + ", ".join(f"{self.device_name(g)}={u}" for g, u in mapping.items()))
 
+    def reset(self) -> None:
+        """Forget the account's devices and unit IDs (after logout / switching accounts)."""
+        self.devices = {}
+        self.unit_by_gateway = {}
+        write_private_json(self.units_file, self.unit_by_gateway)
+        self._last_written.clear()
+        self._pending.clear()
+        self.last_poll = None
+        self.last_error = None
+        self.next_poll_at = 0.0
+        self.status = STATUS_NOT_LOGGED_IN
+
     def device_name(self, gateway_id: str) -> str:
         device = self.devices.get(gateway_id)
         return device.name if device else gateway_id
@@ -130,6 +142,8 @@ class Bridge:
                 self.next_poll_at = time.time() + 120
                 self.log(f"Polling Daikin failed: {self.last_error}", logging.WARNING)
                 return
+        if not self.onecta.logged_in:
+            return  # logged out while this poll was in flight: drop the old account's data
         self.devices = {item["id"]: Device(item) for item in data if "id" in item}
         self._assign_units()
         self.status, self.last_error = STATUS_OK, None

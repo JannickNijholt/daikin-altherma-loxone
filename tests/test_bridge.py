@@ -137,6 +137,21 @@ def test_rate_limit_backs_off(tmp_path, gateways):
     asyncio.run(test())
 
 
+def test_reset_after_account_switch_restarts_unit_ids(tmp_path, gateways):
+    async def test():
+        bridge = make_bridge(tmp_path, gateways)
+        bridge.onecta.gateways = [dict(gateways[0], id="old-account-gateway")]
+        await bridge.poll()
+        assert list(bridge.gateway_by_unit) == [1]
+        bridge.reset()
+        assert bridge.devices == {} and bridge.unit_by_gateway == {}
+        bridge.onecta.gateways = gateways
+        await bridge.poll()
+        assert sorted(bridge.gateway_by_unit) == [1, 2]   # not 2 and 3
+        assert make_bridge(tmp_path, gateways).unit_by_gateway == bridge.unit_by_gateway
+    asyncio.run(test())
+
+
 def test_set_units_validates(tmp_path, gateways):
     async def test():
         bridge = make_bridge(tmp_path, gateways)
