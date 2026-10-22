@@ -225,6 +225,7 @@ class WebUI:
 
     async def refresh(self, request: web.Request) -> web.Response:
         self.bridge.request_poll()
+        self.bridge.log(f"Refresh requested; next poll {fmt_time(self.bridge.next_poll_at)} (at most once per minute)")
         raise web.HTTPSeeOther("/")
 
     async def save_units(self, request: web.Request) -> web.Response:
