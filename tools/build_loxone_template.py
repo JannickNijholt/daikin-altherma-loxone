@@ -13,6 +13,7 @@ Daikin EKRHH installer reference guide (4P744838-1E, chapter 9); Loxone expects 
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -157,8 +158,13 @@ REPEAT_RATE = 60
 LIMIT_OFFSETS = {54, 55, 56, 57, 58, 59, 60, 61, 84, 85, 86, 87}
 
 
+# Loxone Config's template import cuts an attribute at a raw apostrophe and then loses the
+# following attributes (the IO address falls back to 0). Loxone itself writes &apos;.
+LOXONE_ENTITIES = {"\n": "&#10;", "'": "&apos;"}
+
+
 def attrs(**values: object) -> str:
-    return " ".join(f"{key}={quoteattr(str(value), {chr(10): '&#10;'})}" for key, value in values.items() if value is not None)
+    return " ".join(f"{key}={quoteattr(str(value), LOXONE_ENTITIES)}" for key, value in values.items() if value is not None)
 
 
 def scaling(kind: Kind, sensor: bool) -> dict[str, int]:
@@ -201,9 +207,8 @@ def build() -> str:
     for register in INPUT_REGISTERS:
         poll = LIMIT_POLL if register.offset in LIMIT_OFFSETS else FAST_POLL
         lines.append(command("IR", register, READ_INPUT, sensor=True, poll=poll))
-    # Loxone Config resets a sensor's IO address to 0 on import when another sensor already
-    # uses it, even with a different function code. On a real HomeHub the holding read-back
-    # only echoes the last write, so on a clash keep the input register.
+    # Precaution: give every Loxone sensor its own IO address. On a real HomeHub the holding
+    # read-back only echoes the last write, so on a clash keep the input register.
     input_offsets = {r.offset for r in INPUT_REGISTERS}
     for register in HOLDING_REGISTERS:
         if register.offset in input_offsets:
@@ -244,7 +249,9 @@ def validate(xml: str) -> list[str]:
     sensor_addresses = [int(c.get("ModbusAddress", "0")) for c in root.iter("ModbusCmd") if c.get("Sensor") == "true"]
     shared = sorted({a for a in sensor_addresses if sensor_addresses.count(a) > 1})
     if shared:
-        errors.append(f"sensors share addresses {shared} (Loxone resets them to 0 on import)")
+        errors.append(f"sensors share addresses {shared}")
+    if re.search(r'="[^"]*\'', xml):
+        errors.append("raw apostrophe in an attribute (Loxone import drops the following attributes)")
     return errors
 
 

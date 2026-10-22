@@ -26,7 +26,7 @@ def write(device, offset, raw):
 def test_no_address_is_used_by_both_tables():
     holding = {r.offset for r in REGISTERS if r.table == HOLDING and r.extension}
     inputs = {r.offset for r in REGISTERS if r.table == INPUT and r.extension}
-    assert not holding & inputs  # Loxone resets duplicate sensor addresses to 0 on import
+    assert not holding & inputs  # one Loxone sensor per address
 
 
 def test_offsets_are_unique_and_homehub_compatible():

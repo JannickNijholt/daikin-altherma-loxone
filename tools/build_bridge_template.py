@@ -11,6 +11,7 @@ Source of truth: src/onecta_modbus/registers.py. Writes
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from xml.etree import ElementTree
@@ -29,8 +30,13 @@ READ_HOLDING, READ_INPUT, WRITE_SINGLE = 3, 4, 6
 UNIT_FORMAT = {"°C": "<v.1>°C", "kWh": "<v.1> kWh", "s": "<v> s", "": "<v>"}
 
 
+# Loxone Config's template import cuts an attribute at a raw apostrophe and then loses the
+# following attributes (the IO address falls back to 0). Loxone itself writes &apos;.
+LOXONE_ENTITIES = {"\n": "&#10;", "'": "&apos;"}
+
+
 def attrs(**values: object) -> str:
-    return " ".join(f"{k}={quoteattr(str(v), {chr(10): '&#10;'})}" for k, v in values.items() if v is not None)
+    return " ".join(f"{k}={quoteattr(str(v), LOXONE_ENTITIES)}" for k, v in values.items() if v is not None)
 
 
 def loxone_unit(reg: Register) -> str:
@@ -74,9 +80,8 @@ def template(registers: list[Register], title: str) -> str:
              f'\t<Info templateType="7" minVersion="{MIN_LOXONE_VERSION}"/>']
     ordered = sorted(registers, key=lambda r: (r.table == HOLDING, r.offset))
     readbacks = [r for r in ordered if r.table == HOLDING and r.readback]
-    # Loxone Config resets the IO address of a sensor to 0 on import when another sensor
-    # already uses that address (even with a different function code), so sensor addresses
-    # must be unique. On a clash keep the holding read-back and leave the input out.
+    # Precaution: give every Loxone sensor its own IO address. On a clash keep the holding
+    # read-back and leave the input out.
     taken = {r.offset for r in readbacks}
     inputs = [r for r in ordered if r.table != HOLDING and r.offset not in taken]
     skipped = [r for r in ordered if r.table != HOLDING and r.offset in taken]
@@ -122,6 +127,7 @@ def main() -> int:
             addresses = [int(c.get("ModbusAddress", "0")) for c in root.iter("ModbusCmd") if c.get("Sensor") == "true"]
             duplicates = sorted({a for a in addresses if addresses.count(a) > 1})
             assert not duplicates, f"{path.name}: sensors share addresses {duplicates}"
+            assert not re.search(r'="[^"]*\'', content), f"{path.name}: raw apostrophe in an attribute"
         if "--check" in sys.argv:
             if not path.exists() or path.read_text(encoding="utf-8-sig") != content:
                 stale.append(path.name)

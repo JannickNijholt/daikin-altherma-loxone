@@ -3,8 +3,8 @@
 Offsets are 1-based as in the Daikin EKRHH installer reference guide (PDU address =
 offset - 1). Registers 1-99 follow the HomeHub map, so Loxone templates written for a
 HomeHub work unchanged. Extensions for what Onecta offers beyond it use input registers
-101+ and holding registers 201+, so no address is used by both tables: Loxone Config
-resets the IO address of a second sensor on an already used address to 0 on import.
+101+ and holding registers 201+, so no address is used by both tables (keeps every
+Loxone sensor on its own address).
 
 Reads return 32767 for registers this bridge doesn't support and 32766 for supported
 registers without data (same convention as the HomeHub).
@@ -286,10 +286,10 @@ REGISTERS: list[Register] = [
     # Extensions: holding
     Register(HOLDING, 201, "Room heating setpoint (0.5 °C steps)", _setpoint_value(_climate_mp, "heating", "roomTemperature"),
              _write_setpoint(_climate_mp, "heating", "roomTemperature"), scale=10, unit="°C",
-             hint="Raw value x10; rounded to the unit's 0.5 °C step", tags=("main",)),
+             hint="Raw value x10; rounded to 0.5 °C steps", tags=("main",)),
     Register(HOLDING, 202, "Room cooling setpoint (0.5 °C steps)", _setpoint_value(_climate_mp, "cooling", "roomTemperature"),
              _write_setpoint(_climate_mp, "cooling", "roomTemperature"), scale=10, unit="°C",
-             hint="Raw value x10; rounded to the unit's 0.5 °C step", tags=("cooling",)),
+             hint="Raw value x10; rounded to 0.5 °C steps", tags=("cooling",)),
     Register(HOLDING, 203, "Room auto setpoint (0.5 °C steps)", _setpoint_value(_climate_mp, "auto", "roomTemperature"),
              _write_setpoint(_climate_mp, "auto", "roomTemperature"), scale=10, unit="°C",
              hint="Raw value x10; used in operation mode Auto", tags=("cooling",)),

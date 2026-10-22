@@ -90,9 +90,9 @@ changeable on the page and kept across restarts).
 | Bridge health | `IR101` (0 = OK), `IR103` data age in seconds |
 | API budget | `IR104` calls left today, `IR106` commands last hour, `IR107` commands blocked |
 
-Extension registers use their own ranges (inputs 101+, holding 201+) because Loxone Config
-resets a sensor's IO address to 0 on import when another sensor already uses that address.
-If an object shows `32766`/`3276.6`, check its IO address in Loxone Config.
+If an object shows `32766` (or `3276.6` after scaling), check its IO address in Loxone Config.
+Loxone's template import drops the attributes after a raw apostrophe in a text field, so the
+address falls back to 0; the generated templates write apostrophes as `&apos;` for that reason.
 
 The full register list is in [bridge-registers.md](bridge-registers.md). The live values per
 unit are at `http://<bridge-ip>:8080/registers/<unit>`.

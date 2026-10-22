@@ -97,7 +97,7 @@ template was written from Daikin's register map instead and fixes these issues f
 | IR58–IR61 Add LWT limits | not divided by 100 | ÷100 |
 | IR49 flow rate | labelled l/h | l/min (as specified by Daikin) |
 | IR76–77 (DHW upper/lower), IR84–87 (room setpoint limits) | missing | included |
-| Holding-register read-backs (FC 3) | only HR01, HR02, HR10 | all holding registers except where an input register uses the same address (Loxone resets duplicate sensor addresses to 0) |
+| Holding-register read-backs (FC 3) | only HR01, HR02, HR10 | all holding registers except where an input register uses the same address (one sensor per address) |
 
 ## 6. Regenerating the template
 
