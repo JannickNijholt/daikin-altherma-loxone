@@ -39,9 +39,7 @@ git clone https://github.com/JannickNijholt/daikin-altherma-loxone.git /opt/onec
 /opt/onecta-modbus/src/deploy/install.sh
 ```
 
-The repository is private, so `git clone` needs GitHub credentials (e.g. `gh auth login`
-or a personal access token). Alternatively copy the folder over with `scp`. To update:
-`git -C /opt/onecta-modbus/src pull && /opt/onecta-modbus/src/deploy/install.sh`.
+To update: `git -C /opt/onecta-modbus/src pull && /opt/onecta-modbus/src/deploy/install.sh`.
 
 The service runs as `onecta-modbus`, keeps its state in `/var/lib/onecta-modbus` (mode 0700)
 and reads optional settings from `/etc/onecta-modbus.env`. Logs: `journalctl -u onecta-modbus -f`.
