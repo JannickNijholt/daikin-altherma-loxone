@@ -259,9 +259,19 @@ class WebUI:
             prefix = "HR" if reg.table == HOLDING else "IR"
             rows.append(f"<tr><td>{prefix}{reg.offset}</td><td>{reg.offset - 1}</td><td>{escape(reg.name)}</td>"
                         f"<td>{word}</td><td>{escape(value)}</td><td>{'yes' if reg.write else ''}</td></tr>")
+        requests = []
+        for ts, req_unit, function, address, count, words in self.bridge.requests:
+            if req_unit != unit or len(requests) >= 60:
+                continue
+            shown = ", ".join(str(w) for w in words[:12]) + (" …" if len(words) > 12 else "")
+            requests.append(f"<tr><td>{fmt_time(ts)}</td><td>{escape(function)}</td><td>{address}</td>"
+                            f"<td>{address + 1}–{address + count}</td><td>{count}</td><td>{escape(shown)}</td></tr>")
         return page(f"Registers · unit {unit} · {ctx.device.name}", f"""<div class=card>
           <table><tr><th>Register</th><th>PDU address</th><th>Name</th><th>Raw</th><th>Value</th><th>Writable</th></tr>
-          {''.join(rows)}</table></div>""")
+          {''.join(rows)}</table></div>
+          <div class=card><h2>Recent Modbus requests for this unit</h2>
+          <table><tr><th>Time</th><th>Request</th><th>PDU address</th><th>Registers</th><th>Count</th><th>Words</th></tr>
+          {''.join(requests) or '<tr><td colspan=6 class=muted>None yet</td></tr>'}</table></div>""")
 
     async def state(self, request: web.Request) -> web.Response:
         b = self.bridge

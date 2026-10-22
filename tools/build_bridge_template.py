@@ -73,8 +73,16 @@ def template(registers: list[Register], title: str) -> str:
              f"<Modbus {attrs(Title=title, Comment='', HintText=hint, Channel=UNIT_ID)}>",
              f'\t<Info templateType="7" minVersion="{MIN_LOXONE_VERSION}"/>']
     ordered = sorted(registers, key=lambda r: (r.table == HOLDING, r.offset))
-    lines += [command(r, READ_INPUT, True) for r in ordered if r.table != HOLDING]
-    lines += [command(r, READ_HOLDING, True) for r in ordered if r.table == HOLDING and r.readback]
+    readbacks = [r for r in ordered if r.table == HOLDING and r.readback]
+    # Loxone Config resets the IO address of a sensor to 0 on import when another sensor
+    # already uses that address (even with a different function code), so sensor addresses
+    # must be unique. On a clash keep the holding read-back and leave the input out.
+    taken = {r.offset for r in readbacks}
+    inputs = [r for r in ordered if r.table != HOLDING and r.offset not in taken]
+    skipped = [r for r in ordered if r.table != HOLDING and r.offset in taken]
+    lines += [f"\t<!-- IR{r.offset} {r.name}: left out, address shared with HR{r.offset} -->" for r in skipped]
+    lines += [command(r, READ_INPUT, True) for r in inputs]
+    lines += [command(r, READ_HOLDING, True) for r in readbacks]
     lines += [command(r, WRITE_SINGLE, False) for r in ordered if r.table == HOLDING and r.write]
     lines.append("</Modbus>")
     return "\n".join(lines) + "\n"
@@ -110,7 +118,10 @@ def main() -> int:
     for path, build in OUTPUTS.items():
         content = build()
         if path.suffix == ".xml":
-            ElementTree.fromstring(content.encode())  # must be well-formed
+            root = ElementTree.fromstring(content.encode())  # must be well-formed
+            addresses = [int(c.get("ModbusAddress", "0")) for c in root.iter("ModbusCmd") if c.get("Sensor") == "true"]
+            duplicates = sorted({a for a in addresses if addresses.count(a) > 1})
+            assert not duplicates, f"{path.name}: sensors share addresses {duplicates}"
         if "--check" in sys.argv:
             if not path.exists() or path.read_text(encoding="utf-8-sig") != content:
                 stale.append(path.name)

@@ -42,6 +42,8 @@ class Bridge:
         self._flushing: set[tuple[int, int]] = set()
         self.command_times: deque[float] = deque()
         self.commands_blocked = 0
+        # (time, unit, function, address, count, words) of recent Modbus requests, for the web UI
+        self.requests: deque[tuple[float, int, str, int, int, list[int]]] = deque(maxlen=200)
 
     # ---- bookkeeping ----------------------------------------------------------------
 
@@ -205,10 +207,12 @@ class Bridge:
         for offset in range(address + 1, address + count + 1):
             register = BY_ADDRESS.get((table, offset))
             words.append(register.encode(ctx) if register else UNSUPPORTED)
+        self.requests.appendleft((time.time(), unit, "read " + table, address, count, words))
         return words
 
     def write(self, unit: int, address: int, words: list[int]) -> None:
         self._context(unit)  # validates the unit
+        self.requests.appendleft((time.time(), unit, "write", address, len(words), list(words)))
         for i, word in enumerate(words):
             key = (unit, address + i + 1)
             if self._last_written.get(key) == word:

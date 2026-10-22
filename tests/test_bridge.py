@@ -71,13 +71,13 @@ def test_write_patches_once_and_ignores_repeats(tmp_path, gateways):
     async def test():
         bridge = make_bridge(tmp_path, gateways)
         await bridge.poll()
-        bridge.write(2, 100, [215])                      # HR101 boven = 21.5 °C
+        bridge.write(2, 200, [215])                      # HR201 boven = 21.5 °C
         await asyncio.sleep(0.05)
         assert len(bridge.onecta.patches) == 1
         command = bridge.onecta.patches[0][1]
         assert command.value == 21.5
-        assert bridge.read(2, "holding", 100, 1) == [215]  # optimistic update
-        bridge.write(2, 100, [215])                      # Loxone repeat: no new API call
+        assert bridge.read(2, "holding", 200, 1) == [215]  # optimistic update
+        bridge.write(2, 200, [215])                      # Loxone repeat: no new API call
         await asyncio.sleep(0.05)
         assert len(bridge.onecta.patches) == 1
     asyncio.run(test())
@@ -88,7 +88,7 @@ def test_write_debounces_slider_moves(tmp_path, gateways):
         bridge = make_bridge(tmp_path, gateways)
         await bridge.poll()
         for raw in (190, 195, 200, 205):
-            bridge.write(2, 100, [raw])
+            bridge.write(2, 200, [raw])
         await asyncio.sleep(0.05)
         assert [c.value for _, c in bridge.onecta.patches] == [20.5]
     asyncio.run(test())
@@ -121,7 +121,7 @@ def test_refresh_register_requests_poll(tmp_path, gateways):
         bridge = make_bridge(tmp_path, gateways)
         await bridge.poll()
         bridge.last_poll -= 3600
-        bridge.write(1, 103, [1])                        # HR104 refresh
+        bridge.write(1, 203, [1])                        # HR204 refresh
         await asyncio.sleep(0.05)
         assert bridge.next_poll_at <= bridge.last_poll + 3600 + 1
         assert bridge.onecta.patches == []
@@ -194,7 +194,7 @@ def test_hourly_command_cap(tmp_path, gateways):
     async def test():
         bridge = make_bridge(tmp_path, gateways, max_commands_per_hour=2)
         await bridge.poll()
-        bridge.write(2, 100, [205])   # HR101
+        bridge.write(2, 200, [205])   # HR201
         bridge.write(2, 53, [3])      # HR54
         bridge.write(2, 3, [0])       # HR4
         await asyncio.sleep(0.05)
@@ -209,11 +209,11 @@ def test_commands_stop_near_zero_budget_and_retry_later(tmp_path, gateways):
         bridge = make_bridge(tmp_path, gateways, min_calls_left=5)
         await bridge.poll()
         bridge.onecta.rate_limit = RateLimit(day=5)
-        bridge.write(2, 100, [205])
+        bridge.write(2, 200, [205])
         await asyncio.sleep(0.05)
         assert bridge.onecta.patches == [] and bridge.commands_blocked == 1
         bridge.onecta.rate_limit = RateLimit(day=150)   # budget back (after reset)
-        bridge.write(2, 100, [205])                     # same value again is retried
+        bridge.write(2, 200, [205])                     # same value again is retried
         await asyncio.sleep(0.05)
         assert len(bridge.onecta.patches) == 1
     asyncio.run(test())
@@ -226,7 +226,7 @@ def test_refresh_refused_when_budget_is_reserved(tmp_path, gateways):
         bridge.last_poll -= 3600
         scheduled = bridge.next_poll_at
         bridge.onecta.rate_limit = RateLimit(day=30)
-        bridge.write(1, 103, [1])                       # HR104 refresh
+        bridge.write(1, 203, [1])                       # HR204 refresh
         await asyncio.sleep(0.05)
         assert bridge.next_poll_at == scheduled
     asyncio.run(test())
@@ -237,7 +237,7 @@ def test_no_confirmation_poll_by_default(tmp_path, gateways):
         bridge = make_bridge(tmp_path, gateways, refresh_after_write=0)
         await bridge.poll()
         scheduled = bridge.next_poll_at
-        bridge.write(2, 100, [205])
+        bridge.write(2, 200, [205])
         await asyncio.sleep(0.05)
         assert len(bridge.onecta.patches) == 1
         assert bridge.next_poll_at == scheduled

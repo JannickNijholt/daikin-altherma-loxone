@@ -201,7 +201,14 @@ def build() -> str:
     for register in INPUT_REGISTERS:
         poll = LIMIT_POLL if register.offset in LIMIT_OFFSETS else FAST_POLL
         lines.append(command("IR", register, READ_INPUT, sensor=True, poll=poll))
+    # Loxone Config resets a sensor's IO address to 0 on import when another sensor already
+    # uses it, even with a different function code. On a real HomeHub the holding read-back
+    # only echoes the last write, so on a clash keep the input register.
+    input_offsets = {r.offset for r in INPUT_REGISTERS}
     for register in HOLDING_REGISTERS:
+        if register.offset in input_offsets:
+            lines.append(f"\t<!-- HR{register.offset:02d} (state): left out, address shared with IR{register.offset} -->")
+            continue
         lines.append(command("HR", register, READ_HOLDING, sensor=True, suffix=" (state)", poll=STATE_POLL))
     for register in HOLDING_REGISTERS:
         lines.append(command("HR", register, WRITE_SINGLE, sensor=False))
@@ -234,6 +241,10 @@ def validate(xml: str) -> list[str]:
             errors.append(f"{title!r}: title does not match offset {offset}")
         if (function == WRITE_SINGLE) == (cmd.get("Sensor") == "true"):
             errors.append(f"{title!r}: FC {function} does not match Sensor={cmd.get('Sensor')}")
+    sensor_addresses = [int(c.get("ModbusAddress", "0")) for c in root.iter("ModbusCmd") if c.get("Sensor") == "true"]
+    shared = sorted({a for a in sensor_addresses if sensor_addresses.count(a) > 1})
+    if shared:
+        errors.append(f"sensors share addresses {shared} (Loxone resets them to 0 on import)")
     return errors
 
 

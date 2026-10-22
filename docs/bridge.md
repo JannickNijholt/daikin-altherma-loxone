@@ -81,7 +81,7 @@ changeable on the page and kept across restarts).
 | What | Loxone object |
 |---|---|
 | Room temperature | `IR50 Room temperature Main` |
-| Room setpoint (read/write, 0.5 °C) | `HR101 Room heating setpoint (0.5 °C steps)` |
+| Room setpoint (read/write, 0.5 °C) | `HR201 Room heating setpoint (0.5 °C steps)` |
 | Leaving-water offset (read/write) | `HR54 WD LWT Main heating offset` |
 | On/off (read/write) | `HR04 Space heating/cooling ON/OFF` |
 | Leaving water / outdoor temperature | `IR40` / `IR44` |
@@ -89,6 +89,10 @@ changeable on the page and kept across restarts).
 | Error state, code | `IR21`, `IR22` (2 ASCII chars), `IR23` |
 | Bridge health | `IR101` (0 = OK), `IR103` data age in seconds |
 | API budget | `IR104` calls left today, `IR106` commands last hour, `IR107` commands blocked |
+
+Extension registers use their own ranges (inputs 101+, holding 201+) because Loxone Config
+resets a sensor's IO address to 0 on import when another sensor already uses that address.
+If an object shows `32766`/`3276.6`, check its IO address in Loxone Config.
 
 The full register list is in [bridge-registers.md](bridge-registers.md). The live values per
 unit are at `http://<bridge-ip>:8080/registers/<unit>`.
@@ -103,7 +107,7 @@ unit are at `http://<bridge-ip>:8080/registers/<unit>`.
   command the bridge updates its state immediately; the next regular poll confirms it.
 - Values Daikin doesn't allow (out of range, not settable on this unit) are clamped or
   ignored and logged on the status page. Setpoints are rounded to the unit's step.
-- **HR104 = 1** forces a poll (at most once per minute, not when the budget is reserved).
+- **HR204 = 1** forces a poll (at most once per minute, not when the budget is reserved).
 
 ## API budget guard
 
