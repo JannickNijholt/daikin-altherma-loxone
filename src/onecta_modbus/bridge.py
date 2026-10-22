@@ -13,7 +13,7 @@ import aiohttp
 from .config import Config
 from .model import Command, Device
 from .modbus import GATEWAY_TARGET_FAILED, ModbusError
-from .onecta import ApiError, AuthError, Onecta, RateLimited, read_json, write_private_json
+from .onecta import ApiError, AuthError, Onecta, RateLimited, read_json, seconds_until_day_reset, write_private_json
 from .registers import (
     BY_ADDRESS, HOLDING, REFRESH, STATUS_AUTH_FAILED, STATUS_CLOUD_ERROR, STATUS_NOT_LOGGED_IN, STATUS_OK,
     STATUS_RATE_LIMITED, STATUS_STARTING, UNSUPPORTED, Context,
@@ -40,6 +40,8 @@ class Bridge:
         self._last_written: dict[tuple[int, int], int] = {}
         self._pending: dict[tuple[int, int], int] = {}
         self._flushing: set[tuple[int, int]] = set()
+        self.command_times: deque[float] = deque()
+        self.commands_blocked = 0
 
     # ---- bookkeeping ----------------------------------------------------------------
 
@@ -87,14 +89,42 @@ class Bridge:
             write_private_json(self.units_file, self.unit_by_gateway)
 
     def poll_interval(self) -> float:
+        """Seconds until the next poll: the day/night interval, stretched so polling never
+        touches the calls reserved for commands before the daily counter resets."""
         now = datetime.now().time()
         day_start, night_start = self.config.day_start, self.config.night_start
         is_day = day_start <= now < night_start if day_start < night_start else not night_start <= now < day_start
-        minutes = self.config.poll_day_minutes if is_day else self.config.poll_night_minutes
+        interval = 60 * (self.config.poll_day_minutes if is_day else self.config.poll_night_minutes)
+        slowest = 60 * self.config.max_poll_minutes
         left = self.onecta.rate_limit.day
-        if left is not None and left < self.config.low_budget:
-            minutes *= 3
-        return minutes * 60
+        if left is None:
+            return interval
+        spare = left - self.config.command_reserve
+        if spare <= 0:
+            return max(interval, slowest)
+        return min(max(interval, seconds_until_day_reset() / spare), max(interval, slowest))
+
+    # ---- command budget -------------------------------------------------------------
+
+    def commands_last_hour(self) -> int:
+        cutoff = time.time() - 3600
+        while self.command_times and self.command_times[0] < cutoff:
+            self.command_times.popleft()
+        return len(self.command_times)
+
+    def command_block_reason(self) -> str | None:
+        left = self.onecta.rate_limit.day
+        if left is not None and left <= self.config.min_calls_left:
+            return f"only {left} Daikin API calls left today"
+        if self.commands_last_hour() >= self.config.max_commands_per_hour:
+            return f"limit of {self.config.max_commands_per_hour} commands per hour reached"
+        return None
+
+    def refresh_block_reason(self) -> str | None:
+        left = self.onecta.rate_limit.day
+        if left is not None and left <= self.config.command_reserve:
+            return f"only {left} Daikin API calls left today, kept for commands"
+        return None
 
     # ---- main loop ------------------------------------------------------------------
 
@@ -165,6 +195,8 @@ class Bridge:
             data_age=None if self.last_poll is None else time.time() - self.last_poll,
             calls_left_day=self.onecta.rate_limit.day,
             calls_left_minute=self.onecta.rate_limit.minute,
+            commands_last_hour=self.commands_last_hour(),
+            commands_blocked=self.commands_blocked,
         )
 
     def read(self, unit: int, table: str, address: int, count: int) -> list[int]:
@@ -206,8 +238,12 @@ class Bridge:
         value = register.decode(word)
         result = register.write(device, value)
         if result == REFRESH:
-            self.request_poll()
-            self.log(f"{device.name}: refresh requested via HR{offset}")
+            reason = self.refresh_block_reason()
+            if reason:
+                self.log(f"{device.name}: refresh via HR{offset} refused, {reason}", logging.WARNING)
+            else:
+                self.request_poll()
+                self.log(f"{device.name}: refresh requested via HR{offset}")
             return
         if not isinstance(result, Command):
             self.log(f"{device.name}: HR{offset} {register.name} = {value:g} not supported by this unit", logging.WARNING)
@@ -215,23 +251,33 @@ class Bridge:
         if device.current_value(result) == result.value:
             _LOGGER.info("%s: %s already %s, no API call", device.name, register.name, result.value)
             return
-        await self._send(device, register.name, result)
+        reason = self.command_block_reason()
+        if reason:
+            self.commands_blocked += 1
+            self._last_written.pop(key, None)  # let a later write of the same value try again
+            self.log(f"{device.name}: {register.name} = {result.value} NOT sent, {reason}", logging.WARNING)
+            return
+        if not await self._send(device, register.name, result):
+            self._last_written.pop(key, None)
 
-    async def _send(self, device: Device, label: str, command: Command) -> None:
+    async def _send(self, device: Device, label: str, command: Command) -> bool:
         async with self._api_lock:
+            self.command_times.append(time.time())
             try:
                 await self.onecta.patch(device.gateway_id, command)
             except AuthError as err:
                 self.status, self.last_error = STATUS_AUTH_FAILED, str(err)
                 self.log(f"{device.name}: {label} not sent, login problem: {err}", logging.WARNING)
-                return
+                return False
             except RateLimited as err:
                 self.status, self.last_error = STATUS_RATE_LIMITED, str(err)
                 self.log(f"{device.name}: {label} not sent, {err}", logging.WARNING)
-                return
+                return False
             except (ApiError, aiohttp.ClientError, asyncio.TimeoutError) as err:
                 self.log(f"{device.name}: {label} failed: {err or type(err).__name__}", logging.WARNING)
-                return
-        device.apply(command)
+                return False
+        device.apply(command)  # optimistic; the next regular poll confirms
         self.log(f"{device.name}: {label} set to {command.value}")
-        self.request_poll(self.config.refresh_after_write)
+        if self.config.refresh_after_write > 0:
+            self.request_poll(self.config.refresh_after_write)
+        return True

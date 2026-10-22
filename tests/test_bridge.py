@@ -28,9 +28,10 @@ class FakeOnecta:
         self.patches.append((gateway_id, command))
 
 
-def make_bridge(tmp_path, gateways):
-    config = Config(data_dir=tmp_path, write_debounce=0.01, refresh_after_write=45)
-    return Bridge(config, FakeOnecta(gateways))
+def make_bridge(tmp_path, gateways, **overrides):
+    settings = dict(data_dir=tmp_path, write_debounce=0.01, refresh_after_write=45)
+    settings.update(overrides)
+    return Bridge(Config(**settings), FakeOnecta(gateways))
 
 
 def test_poll_assigns_stable_unit_ids(tmp_path, gateways):
@@ -161,4 +162,83 @@ def test_set_units_validates(tmp_path, gateways):
             bridge.set_units({boven: 1, beneden: 1})
         bridge.set_units({boven: 1, beneden: 2})
         assert bridge.device_name(bridge.gateway_by_unit[1]) == "Klimaatregeling boven"
+    asyncio.run(test())
+
+
+# ---- API budget guard ------------------------------------------------------------------
+
+@pytest.mark.parametrize("left,until_reset,expected", [
+    (None, 36000, 600),     # no rate-limit info yet: normal day interval
+    (200, 3600, 600),       # plenty left: never faster than the configured interval
+    (60, 36000, 3600),      # 10 spare calls for 10 h: stretch, capped at the 60 min floor
+    (110, 36000, 600),      # 60 spare calls for 10 h: exactly every 10 min
+    (90, 36000, 900),       # 40 spare calls for 10 h: every 15 min
+    (40, 36000, 3600),      # below the reserve: hourly only
+])
+def test_poll_interval_keeps_command_reserve(tmp_path, gateways, monkeypatch, left, until_reset, expected):
+    monkeypatch.setattr("onecta_modbus.bridge.seconds_until_day_reset", lambda: until_reset)
+
+    async def test():  # Python 3.9: asyncio primitives need a running loop
+        bridge = make_bridge(tmp_path, gateways, poll_day_minutes=10, poll_night_minutes=10, command_reserve=50)
+        bridge.onecta.rate_limit = RateLimit(day=left)
+        assert bridge.poll_interval() == pytest.approx(expected)
+    asyncio.run(test())
+
+
+def test_seconds_until_day_reset_is_utc_midnight():
+    from onecta_modbus.onecta import seconds_until_day_reset
+    assert seconds_until_day_reset(5 * 86400 + 100) == 86300
+
+
+def test_hourly_command_cap(tmp_path, gateways):
+    async def test():
+        bridge = make_bridge(tmp_path, gateways, max_commands_per_hour=2)
+        await bridge.poll()
+        bridge.write(2, 100, [205])   # HR101
+        bridge.write(2, 53, [3])      # HR54
+        bridge.write(2, 3, [0])       # HR4
+        await asyncio.sleep(0.05)
+        assert len(bridge.onecta.patches) == 2
+        assert bridge.commands_blocked == 1
+        assert bridge.read(2, "input", 105, 2) == [2, 1]   # IR106 sent last hour, IR107 blocked
+    asyncio.run(test())
+
+
+def test_commands_stop_near_zero_budget_and_retry_later(tmp_path, gateways):
+    async def test():
+        bridge = make_bridge(tmp_path, gateways, min_calls_left=5)
+        await bridge.poll()
+        bridge.onecta.rate_limit = RateLimit(day=5)
+        bridge.write(2, 100, [205])
+        await asyncio.sleep(0.05)
+        assert bridge.onecta.patches == [] and bridge.commands_blocked == 1
+        bridge.onecta.rate_limit = RateLimit(day=150)   # budget back (after reset)
+        bridge.write(2, 100, [205])                     # same value again is retried
+        await asyncio.sleep(0.05)
+        assert len(bridge.onecta.patches) == 1
+    asyncio.run(test())
+
+
+def test_refresh_refused_when_budget_is_reserved(tmp_path, gateways):
+    async def test():
+        bridge = make_bridge(tmp_path, gateways, command_reserve=50)
+        await bridge.poll()
+        bridge.last_poll -= 3600
+        scheduled = bridge.next_poll_at
+        bridge.onecta.rate_limit = RateLimit(day=30)
+        bridge.write(1, 103, [1])                       # HR104 refresh
+        await asyncio.sleep(0.05)
+        assert bridge.next_poll_at == scheduled
+    asyncio.run(test())
+
+
+def test_no_confirmation_poll_by_default(tmp_path, gateways):
+    async def test():
+        bridge = make_bridge(tmp_path, gateways, refresh_after_write=0)
+        await bridge.poll()
+        scheduled = bridge.next_poll_at
+        bridge.write(2, 100, [205])
+        await asyncio.sleep(0.05)
+        assert len(bridge.onecta.patches) == 1
+        assert bridge.next_poll_at == scheduled
     asyncio.run(test())

@@ -88,6 +88,7 @@ changeable on the page and kept across restarts).
 | Energy today / month / year | `IR110` / `IR112` / `IR113` |
 | Error state, code | `IR21`, `IR22` (2 ASCII chars), `IR23` |
 | Bridge health | `IR101` (0 = OK), `IR103` data age in seconds |
+| API budget | `IR104` calls left today, `IR106` commands last hour, `IR107` commands blocked |
 
 The full register list is in [bridge-registers.md](bridge-registers.md). The live values per
 unit are at `http://<bridge-ip>:8080/registers/<unit>`.
@@ -96,16 +97,40 @@ unit are at `http://<bridge-ip>:8080/registers/<unit>`.
 
 - **Reads** come from the bridge's cache, so Loxone can poll as often as it likes without
   using Daikin API calls. `IR103` shows how old the data is.
-- **Writes** are collected for 2 s (slider moves) and sent only if the value changed since
+- **Writes** are collected for 3 s (slider moves) and sent only if the value changed since
   the last Modbus write *and* differs from the cloud value. A setpoint changed in the Onecta
-  app is therefore not overwritten unless Loxone writes a new value. About 45 s after a
-  command the bridge re-reads the cloud to confirm.
+  app is therefore not overwritten unless Loxone writes a new value. After a successful
+  command the bridge updates its state immediately; the next regular poll confirms it.
 - Values Daikin doesn't allow (out of range, not settable on this unit) are clamped or
   ignored and logged on the status page. Setpoints are rounded to the unit's step.
-- **HR104 = 1** forces a poll (at most once per minute).
-- **API budget:** Daikin allows about 200 calls per day. If Home Assistant still polls the
-  same account, both share that budget, so remove the Onecta integration from Home Assistant
-  once Loxone is switched over.
+- **HR104 = 1** forces a poll (at most once per minute, not when the budget is reserved).
+
+## API budget guard
+
+Daikin allows about **200 API calls per day per account**, reset at 00:00 UTC. Every poll
+and every command from Loxone costs one call. When the budget runs out, the bridge is blind
+until the reset, so it guards it:
+
+| Guard | Default | Effect |
+|---|---|---|
+| Command reserve | 50 calls/day | Polling is planned so the last 50 calls of the day stay free for commands. With plenty left it polls every 10 min (30 at night); when the budget gets tight it stretches the interval, down to once an hour. |
+| Hourly command cap | 20/hour | More commands in an hour are **not sent**. This protects against Loxone logic that keeps changing a value. |
+| Hard floor | 5 calls left | No more commands until the daily reset. |
+| No confirmation poll | – | A command costs exactly one call. |
+
+Blocked commands are logged on the status page and counted in `IR107`. `IR104` (calls left
+today) and `IR106` (commands last hour) let you alarm in Loxone. A blocked value is retried
+when Loxone writes it again.
+
+A typical day: about 108 polls (every 10 min from 07:00 to 22:00, every 30 min at night) plus
+up to 50 reserved commands, leaving about 40 calls of margin.
+
+**Design your Loxone logic for this:** send setpoints when something meaningful changes
+(presence, time program, a manual change), not continuously from a controller output. For
+fast closed-loop control a local Daikin HomeHub (Modbus, no cloud limit) is the right tool.
+
+If Home Assistant still polls the same Daikin account, both share the budget. Remove the
+Onecta integration from Home Assistant once Loxone is switched over.
 
 ## Configuration
 
@@ -118,9 +143,12 @@ All optional, in `/etc/onecta-modbus.env` (LXC) or as container environment vari
 | `ONECTA_WEB_PASSWORD` | – | Protect the web UI with basic auth |
 | `ONECTA_POLL_DAY_MINUTES` / `_NIGHT_` | 10 / 30 | Poll interval |
 | `ONECTA_DAY_START` / `ONECTA_NIGHT_START` | 07:00 / 22:00 | Day period |
-| `ONECTA_LOW_BUDGET` | 40 | Poll 3x slower below this many calls left today |
-| `ONECTA_WRITE_DEBOUNCE` | 2 | Seconds to collect writes |
-| `ONECTA_REFRESH_AFTER_WRITE` | 45 | Seconds before re-reading after a command |
+| `ONECTA_MAX_POLL_MINUTES` | 60 | Slowest poll interval when the budget is tight |
+| `ONECTA_COMMAND_RESERVE` | 50 | Daily calls polling leaves free for commands |
+| `ONECTA_MAX_COMMANDS_PER_HOUR` | 20 | Hourly command cap |
+| `ONECTA_MIN_CALLS_LEFT` | 5 | No commands below this many calls left today |
+| `ONECTA_WRITE_DEBOUNCE` | 3 | Seconds to collect writes |
+| `ONECTA_REFRESH_AFTER_WRITE` | 0 | Extra confirmation poll after a command (costs a call); 0 = off |
 | `ONECTA_DATA_DIR` | /var/lib/onecta-modbus | Settings and tokens |
 
 ## Security

@@ -120,7 +120,12 @@ class WebUI:
           <div class=stat><small>Modbus TCP</small><b>{escape(request.host.split(':')[0])}:{self.modbus_port}</b></div>
           <div class=stat><small>Last poll</small><b>{fmt_time(b.last_poll)}</b></div>
           <div class=stat><small>Next poll</small><b>{fmt_time(b.next_poll_at if b.last_poll else None)}</b></div>
-          <div class=stat><small>API calls left today</small><b>{fmt(rl.day)}</b></div></div>""")
+          <div class=stat><small>API calls left today</small><b>{fmt(rl.day)}</b></div>
+          <div class=stat><small>Commands last hour</small><b>{b.commands_last_hour()} / {b.config.max_commands_per_hour}</b></div>
+          <div class=stat><small>Commands blocked</small><b class="{'bad' if b.commands_blocked else ''}">{b.commands_blocked}</b></div></div>
+          <p class=muted style='margin:8px 2px 0'>Budget guard: polling keeps {b.config.command_reserve} calls per day free for
+          commands (resets at 00:00 UTC); commands stop at {b.config.max_commands_per_hour} per hour or when
+          {b.config.min_calls_left} calls are left.</p>""")
 
         rows = []
         for gateway, unit in sorted(b.unit_by_gateway.items(), key=lambda item: item[1]):
@@ -224,8 +229,12 @@ class WebUI:
         raise web.HTTPSeeOther("/")
 
     async def refresh(self, request: web.Request) -> web.Response:
-        self.bridge.request_poll()
-        self.bridge.log(f"Refresh requested; next poll {fmt_time(self.bridge.next_poll_at)} (at most once per minute)")
+        reason = self.bridge.refresh_block_reason()
+        if reason:
+            self.bridge.log(f"Refresh refused: {reason}")
+        else:
+            self.bridge.request_poll()
+            self.bridge.log(f"Refresh requested; next poll {fmt_time(self.bridge.next_poll_at)} (at most once per minute)")
         raise web.HTTPSeeOther("/")
 
     async def save_units(self, request: web.Request) -> web.Response:

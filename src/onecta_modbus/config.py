@@ -31,8 +31,15 @@ class Config:
     poll_night_minutes: float = field(default_factory=lambda: float(_env("POLL_NIGHT_MINUTES", "30")))
     day_start: time = field(default_factory=lambda: _time(_env("DAY_START", "07:00")))
     night_start: time = field(default_factory=lambda: _time(_env("NIGHT_START", "22:00")))
-    # Daikin can return stale values right after a command; confirm a bit later.
-    refresh_after_write: float = field(default_factory=lambda: float(_env("REFRESH_AFTER_WRITE", "45")))
-    write_debounce: float = field(default_factory=lambda: float(_env("WRITE_DEBOUNCE", "2")))
-    low_budget: int = field(default_factory=lambda: int(_env("LOW_BUDGET", "40")))
+    # Poll at least this often, even when the budget is tight.
+    max_poll_minutes: float = field(default_factory=lambda: float(_env("MAX_POLL_MINUTES", "60")))
+    # Daily API calls polling leaves untouched, so Loxone commands keep working.
+    command_reserve: int = field(default_factory=lambda: int(_env("COMMAND_RESERVE", "50")))
+    # Guard against runaway Loxone logic.
+    max_commands_per_hour: int = field(default_factory=lambda: int(_env("MAX_COMMANDS_PER_HOUR", "20")))
+    # Stop sending commands when this few calls are left today.
+    min_calls_left: int = field(default_factory=lambda: int(_env("MIN_CALLS_LEFT", "5")))
+    # Extra poll this many seconds after a command to confirm it; 0 = rely on the next regular poll.
+    refresh_after_write: float = field(default_factory=lambda: float(_env("REFRESH_AFTER_WRITE", "0")))
+    write_debounce: float = field(default_factory=lambda: float(_env("WRITE_DEBOUNCE", "3")))
     log_level: str = field(default_factory=lambda: _env("LOG_LEVEL", "INFO"))

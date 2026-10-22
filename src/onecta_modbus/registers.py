@@ -51,6 +51,8 @@ class Context:
     data_age: float | None = None
     calls_left_day: int | None = None
     calls_left_minute: int | None = None
+    commands_last_hour: int = 0
+    commands_blocked: int = 0
 
 
 Reader = Callable[[Context], Union[float, int, None]]
@@ -303,6 +305,11 @@ REGISTERS: list[Register] = [
     Register(INPUT, 104, "Daikin API calls left today", lambda ctx: ctx.calls_left_day, poll=300, tags=("main",)),
     Register(INPUT, 105, "Daikin API calls left this minute", lambda ctx: ctx.calls_left_minute, poll=300,
              tags=("diagnostic",)),
+    Register(INPUT, 106, "Commands sent last hour", lambda ctx: ctx.commands_last_hour, poll=60,
+             hint="Daikin API calls used by Loxone commands in the last 60 minutes", tags=("main",)),
+    Register(INPUT, 107, "Commands blocked by budget guard", lambda ctx: ctx.commands_blocked, poll=60,
+             hint="Commands not sent since the bridge started (hourly cap or daily budget); see the web UI log",
+             tags=("main",)),
     Register(INPUT, 110, "Heating energy today", _energy(_climate_mp, "heating", "today"), scale=10, unit="kWh",
              poll=300, tags=("main",)),
     Register(INPUT, 111, "Heating energy yesterday", _energy(_climate_mp, "heating", "yesterday"), scale=10,

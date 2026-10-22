@@ -75,6 +75,10 @@ class RateLimit:
     day: int | None = None
     minute: int | None = None
     retry_after: int | None = None
+    received_at: float = 0.0
+
+    # Not using RateLimit-Reset: Daikin's gateway reports it for the shortest window (the
+    # minute), not the day. Day windows reset at midnight UTC (see seconds_until_day_reset).
 
     @classmethod
     def from_headers(cls, headers: Any) -> RateLimit:
@@ -83,7 +87,14 @@ class RateLimit:
                 return int(headers.get(name))
             except (TypeError, ValueError):
                 return None
-        return cls(as_int("X-RateLimit-Remaining-day"), as_int("X-RateLimit-Remaining-minute"), as_int("Retry-After"))
+        return cls(as_int("X-RateLimit-Remaining-day"), as_int("X-RateLimit-Remaining-minute"),
+                   as_int("Retry-After"), time.time())
+
+
+def seconds_until_day_reset(now: float | None = None) -> float:
+    """Seconds until the next midnight UTC, when the daily API counter resets."""
+    now = time.time() if now is None else now
+    return 86400 - now % 86400
 
 
 class Onecta:

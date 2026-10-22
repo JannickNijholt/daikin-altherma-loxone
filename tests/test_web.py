@@ -44,3 +44,14 @@ def test_setup_page_has_no_nested_forms_and_logout_works(tmp_path):
         assert onecta.logged_out
         assert bridge.unit_by_gateway == {}
     asyncio.run(test())
+
+
+def test_status_page_shows_budget(tmp_path):
+    async def test():
+        bridge = Bridge(Config(data_dir=tmp_path), FakeOnecta())
+        async with TestClient(TestServer(WebUI(bridge, 502).app())) as client:
+            resp = await client.get("/")
+            html = await resp.text()
+        assert resp.status == 200
+        assert "Commands last hour" in html and "0 / 20" in html and "keeps 50 calls" in html
+    asyncio.run(test())
