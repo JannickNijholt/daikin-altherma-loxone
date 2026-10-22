@@ -1,0 +1,5 @@
+onecta_*.json
+*.raw.json
+.venv
+__pycache__
+.git

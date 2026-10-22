@@ -1,43 +1,50 @@
 # Daikin Altherma × Loxone
 
-Native integration of two Daikin Altherma heat pumps into a Loxone Miniserver, replacing
-the current Home Assistant + [Daikin Onecta](https://github.com/jwillemsen/daikin_onecta)
-setup.
+Daikin Altherma heat pumps in a Loxone Miniserver, without Home Assistant.
 
-## TL;DR
+**`onecta-modbus`** is a small service (LXC, Raspberry Pi or Docker) that logs in to the
+Daikin Onecta cloud and offers the units to Loxone over **Modbus TCP, with the same register
+map as the Daikin HomeHub**. Loxone uses its native Modbus support, and one template covers
+reading and control.
 
-- The installed **BRP069A78 WLAN cartridges have no local API**. They only talk to the
-  Daikin cloud ([finding](docs/findings/2026-10-21-brp069a78-local-api.md)).
-- The Onecta cloud API needs OAuth2, which the Miniserver can't do on its own.
-- **Native route:** add a **Daikin HomeHub (EKRHH)** per heat pump and connect it to the
-  Miniserver over **Modbus TCP** (Daikin "use case 3"). This is local, works within
-  seconds, and Loxone ships a template for it. The Onecta app keeps working.
+```text
+Loxone ──Modbus TCP :502──▶ onecta-modbus ──HTTPS/OAuth2──▶ Daikin Onecta cloud ──▶ Altherma units
+                              └─ web UI :8080 (Daikin login, status, live registers)
+```
 
-Full plan, options and open questions: **[docs/PLAN.md](docs/PLAN.md)**
+- Room temperature, setpoint (0.5 °C), leaving-water offset, on/off, outdoor and leaving-water
+  temperature, errors, energy per day/month/year
+- Stays within Daikin's ~200 API calls/day; writes only cost a call when a value changes
+- HomeHub-compatible: swap in a real Daikin HomeHub later by changing only the IP in Loxone
 
-## Loxone template
+**Get started: [docs/bridge.md](docs/bridge.md)** (install, Daikin login, Loxone setup)
 
-**[`loxone/templates/MB_Daikin_HomeHub_EKRHH.xml`](loxone/templates/MB_Daikin_HomeHub_EKRHH.xml)**
-is a Modbus TCP device template for the Daikin HomeHub (use case 3). It covers all input
-and holding registers, with scaling applied. Import and wiring instructions are in
-**[docs/loxone-setup.md](docs/loxone-setup.md)**.
+## Why a bridge
+
+| Route | Result | Details |
+|---|---|---|
+| Local API on the BRP069A78 WLAN cartridges | ❌ none exists | [finding](docs/findings/2026-10-21-brp069a78-local-api.md) |
+| Onecta cloud straight from the Miniserver | ⚠️ read works, control doesn't | Virtual Outputs handle HTTPS, tokens and saved responses, but Onecta commands need HTTP PATCH, which Loxone can't send. [Feasibility tests](docs/loxone-only-feasibility.md) |
+| **Onecta → Modbus bridge** | ✅ full read + control | [docs/bridge.md](docs/bridge.md) |
+| Daikin HomeHub EKRHH (hardware, local Modbus) | ✅ native, needs hardware | Your Altherma 3 M units with MMI 7.8.0 are compatible. [HomeHub template](docs/loxone-setup.md), [plan](docs/PLAN.md) |
 
 ## Repository layout
 
 | Path | Contents |
 |---|---|
-| `docs/PLAN.md` | Integration plan, options, phases, open questions |
-| `docs/findings/` | Dated test results from the real installation |
-| `docs/reference/` | Register maps and protocol notes |
-| `tools/` | Read-only diagnostic scripts |
-| `loxone/templates/` | Loxone Config Modbus templates (generated) |
+| `src/onecta_modbus/` | The bridge (Python 3.9+, only dependency: aiohttp) |
+| `tests/` | Tests, incl. an anonymised fixture of the real units |
+| `deploy/` | LXC/Debian installer, systemd unit, settings file |
+| `Dockerfile`, `docker-compose.yml` | Container alternative |
+| `loxone/templates/` | Loxone Modbus templates: bridge (`MB_Onecta_Bridge*.xml`) and HomeHub (`MB_Daikin_HomeHub_EKRHH.xml`) |
+| `loxone/picoc/` | PicoC programs used to test the Miniserver's capabilities |
+| `docs/` | Bridge guide, register maps, feasibility tests, findings, original plan |
+| `tools/` | Template generators, Onecta probe, adapter probe, fixture sanitizer |
 
-## Tools
+## Development
 
 ```bash
-python3 tools/build_loxone_template.py          # regenerate the Loxone template
-python3 tools/build_loxone_template.py --check  # validate it is correct and up to date
-python3 tools/probe_brp069a78.py 192.168.10.7 192.168.10.3
+pip install -e '.[test]' && pytest
+python3 tools/build_bridge_template.py   # bridge templates + docs/bridge-registers.md
+python3 tools/build_loxone_template.py   # HomeHub template
 ```
-
-The probe checks the WLAN cartridges for local APIs. It is read-only and redacts identifiers.

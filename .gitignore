@@ -6,3 +6,8 @@ __pycache__/
 .DS_Store
 # Raw device dumps may contain identifiers; commit sanitized copies only
 *.raw.json
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+/data/

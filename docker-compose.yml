@@ -1,0 +1,16 @@
+services:
+  onecta-modbus:
+    build: .
+    container_name: onecta-modbus
+    restart: unless-stopped
+    ports:
+      - "502:502"     # Modbus TCP for Loxone
+      - "8080:8080"   # web UI (Daikin login, status)
+    environment:
+      TZ: Europe/Amsterdam
+      # ONECTA_WEB_PASSWORD: change-me
+    volumes:
+      - onecta-data:/data
+
+volumes:
+  onecta-data:

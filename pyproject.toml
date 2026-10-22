@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "onecta-modbus"
+dynamic = ["version"]
+description = "Daikin Onecta cloud to Modbus TCP bridge with a Daikin HomeHub compatible register map (for Loxone)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = ["aiohttp>=3.9"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+onecta-modbus = "onecta_modbus.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "onecta_modbus.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

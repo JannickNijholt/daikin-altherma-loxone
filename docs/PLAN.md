@@ -3,7 +3,7 @@
 Goal: control and monitor both Daikin Altherma heat pumps ("boven" and "beneden")
 **directly from the Loxone Miniserver**, and remove Home Assistant from the chain.
 
-Status: **Phase 0, verifying compatibility.** Decisions marked ❓ are waiting on input
+Status: the HomeHub route below is the hardware option. The current solution without new hardware is the **Onecta → Modbus bridge** ([bridge.md](bridge.md)). Decisions marked ❓ were open questions at the time
 (see [Open questions](#open-questions)).
 
 ---
