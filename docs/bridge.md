@@ -75,7 +75,10 @@ changeable on the page and kept across restarts).
    [`loxone/templates/MB_Onecta_Bridge.xml`](../loxone/templates/MB_Onecta_Bridge.xml)
    (heating units) or `MB_Onecta_Bridge_full.xml` (all registers, incl. cooling/DHW).
 2. Add one **Modbus server** per heat pump from the template: address = bridge IP,
-   port **502**, unit ID as shown in the bridge web UI.
+   port **502**, unit ID as shown in the bridge web UI. The unit ID is the **Modbus address**
+   of the device under the server (the template's default is 1). Check it for every device:
+   two devices with the same unit ID show identical values. The bridge's register page lists
+   which unit IDs Loxone actually requests.
 3. Use the objects:
 
 | What | Loxone object |
